@@ -1,17 +1,183 @@
 import sys
-import pymysql
+import psycopg2
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QTextEdit, QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy, QMessageBox
 from PyQt5.QtWidgets import QInputDialog
 from PyQt5.QtWidgets import QHBoxLayout
+from PyQt5.QtCore import Qt
+from collections import Counter
 import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
+from psycopg2.extras import execute_values
 
+class ApiDataRetriever:
+    def __init__(self, api_input, service_key_input, param_labels, param_inputs, preview_table):
+        self.api_input = api_input
+        self.service_key_input = service_key_input
+        self.param_labels = param_labels
+        self.param_inputs = param_inputs
+        self.preview_table = preview_table
+
+    def data_preview(self):
+        api_url = self.api_input.text()
+        service_key = self.service_key_input.text()
+
+        if not service_key:
+            QMessageBox.critical(None, '에러', '서비스 키를 입력하세요.')
+            return
+
+        params = {'serviceKey': service_key}
+
+        for i, param_input in enumerate(self.param_inputs):
+            param_name = self.param_labels[i].text().replace(':', '').strip()
+            if param_name:
+                params[param_name] = param_input.text()
+
+        try:
+            response = requests.get(api_url, params=params)
+            response.raise_for_status()
+
+            # XML 파싱
+            root = ET.fromstring(response.text)
+
+            # 열 이름 및 값 추출
+            columns = ["baseDate", "baseTime", "category", "fcstDate", "fcstTime", "fcstValue", "nx", "ny"]
+            data = []
+
+            for item in root.find(".//items"):
+                row = [item.find(col).text for col in columns]
+                data.append(row)
+
+            # Set up the table
+            self.preview_table.setColumnCount(len(columns))
+            self.preview_table.setHorizontalHeaderLabels(columns)
+            self.preview_table.setRowCount(len(data))
+
+            for row_idx, row_data in enumerate(data):
+                for col_idx, col_data in enumerate(row_data):
+                    item = QTableWidgetItem(col_data)
+                    self.preview_table.setItem(row_idx, col_idx, item)
+
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(None, '에러', f"다운로드 중 오류 발생: {e}")
+
+def F_ConnectPostDB():
+    host = '127.0.0.1'
+    port = '5432'
+    user = 'postgres'
+    password = '1234'
+    database = 'kwater1'
+    
+    global isconnect
+    
+    try :
+        # PostgreSQL 연결
+        connection = psycopg2.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=database
+        )
+
+        cursor = connection.cursor()
+        print("PostgreSQL 데이터베이스 연결 성공!")
+        
+        isconnect = 1
+        
+    except (Exception, psycopg2.Error) as error:
+        print("PostgreSQL 오류: ",error)
+
+    return connection, cursor
+
+def F_ConnectionClose(cursor, connection):
+    cursor.close()
+    connection.close()
+    isconnect = 0
+    print("데이터 베이스 연결 해제")
+        
+class ParameterSaver:
+    @staticmethod
+    def F_connectPostDB():
+        host = '127.0.0.1'
+        port = '5432'
+        user = 'postgres'
+        password = '1234'
+        database = 'kwater1'
+
+        global isconnect
+
+        try:
+            # PostgreSQL 연결
+            connection = psycopg2.connect(
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                database=database
+            )
+
+            cursor = connection.cursor()
+            print("PostgreSQL 데이터베이스 연결 성공!")
+
+            isconnect = 1
+
+        except (Exception, psycopg2.Error) as error:
+            print("PostgreSQL 오류: ",error)
+            return None, None
+
+        return connection, cursor
+
+    @staticmethod
+    def F_ConnectionClose(cursor, connection):
+        cursor.close()
+        connection.close()
+        isconnect = 0
+        print("데이터 베이스 연결 해제")
+
+    def __init__(self, api_input, service_key_input, param_labels, param_inputs):
+        self.api_input = api_input
+        self.service_key_input = service_key_input
+        self.param_labels = param_labels
+        self.param_inputs = param_inputs
+
+    def save_parameters(self):
+        connection, cursor = self.F_connectPostDB()  # F_connectPostDB 함수로 연결
+        if not connection or not cursor:
+            return
+
+        try:
+            self.insert_parameters_data(cursor, connection)
+            QMessageBox.information(None, '성공', '파라미터가 성공적으로 저장되었습니다.')
+        except Exception as e:
+            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+        finally:
+            if connection:
+                connection.close()
+
+    def insert_parameters_data(self, cursor, connection):
+        # Initialize params_data with api_url and service_key
+        params_data = [self.api_input.text(), self.service_key_input.text()]
+
+        # Add parameter values to params_data
+        for param_input in self.param_inputs:
+            params_data.append(param_input.text() or None)
+
+        try:
+            execute_values(cursor, "INSERT INTO Parameters (api_url, service_key, parameter1, parameter2, parameter3, parameter4, parameter5, parameter6, parameter7) VALUES %s", [params_data])
+            connection.commit()
+        except psycopg2.Error as e:
+            print(f"에러 발생: {e}")
+            raise e
+        
 class DataDownloader(QWidget):
     def __init__(self):
         super().__init__()
 
         self.init_ui()
+
+        # 저장된 API URL값과 서비스키값을 불러옴
+        self.load_saved_values()
 
     def init_ui(self):
         self.setWindowTitle('API 다운로더')
@@ -33,12 +199,12 @@ class DataDownloader(QWidget):
         self.remove_param_button = QPushButton('-', self)
         self.remove_param_button.clicked.connect(self.remove_parameter)
 
-        self.save_param_button = QPushButton('저장', self)
-        self.save_param_button.clicked.connect(self.save_parameter)
+        self.save_params_button = QPushButton('파라미터 저장', self)
+        self.save_params_button.clicked.connect(self.save_parameters)
 
-        self.open_param_button = QPushButton('불러오기', self)
-        self.open_param_button.clicked.connect(self.download_parameters)
-
+        self.load_params_button = QPushButton('불러오기', self)
+        self.load_params_button.clicked.connect(self.load_parameters)
+        
         self.call_button = QPushButton('조회', self)
         self.call_button.clicked.connect(self.data_preview)
 
@@ -46,6 +212,9 @@ class DataDownloader(QWidget):
         self.preview_table = QTableWidget(self)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.preview_table.verticalHeader().setVisible(False)
+
+        self.download_button = QPushButton('다운로드')
+        self.download_button.clicked.connect(self.download_data)
 
         # 수직 박스 레이아웃
         v_layout = QVBoxLayout()
@@ -60,20 +229,22 @@ class DataDownloader(QWidget):
             v_layout.addWidget(self.param_inputs[i])
 
         # 파라미터 추가 및 제거 버튼을 수평 박스 레이아웃에 추가
-            
         h_button_layout1 = QHBoxLayout()
         h_button_layout1.addWidget(self.add_param_button)
         h_button_layout1.addWidget(self.remove_param_button)
         v_layout.addLayout(h_button_layout1)
 
         h_button_layout2 = QHBoxLayout()
-        h_button_layout2.addWidget(self.save_param_button)
-        h_button_layout2.addWidget(self.open_param_button)
+        h_button_layout2.addWidget(self.save_params_button)
+        h_button_layout2.addWidget(self.load_params_button)
         v_layout.addLayout(h_button_layout2)
 
         v_layout.addWidget(self.call_button)
+        
         v_layout.addWidget(self.preview_label)
         v_layout.addWidget(self.preview_table)
+
+        v_layout.addWidget(self.download_button)
 
         self.setLayout(v_layout)
 
@@ -108,96 +279,49 @@ class DataDownloader(QWidget):
             param_label.setParent(None)
             param_input.setParent(None)
 
-    def save_parameter(self):
-        print('저장')
-
-    def open_parameter(self):
-        print('불러오기')
-
     def data_preview(self):
-        api_url = self.api_input.text()
-        service_key = self.service_key_input.text()
+        data_retriever = ApiDataRetriever(self.api_input, self.service_key_input, self.param_labels, self.param_inputs, self.preview_table)
+        data_retriever.data_preview()
 
-        if not service_key:
-            QMessageBox.critical(self, '에러', '서비스 키를 입력하세요.')
-            return
+    def save_parameters(self):
+        parameter_saver = ParameterSaver(self.api_input, self.service_key_input, self.param_labels, self.param_inputs)
+        parameter_saver.save_parameters()
 
-        params = {'serviceKey': service_key}
+    def load_parameters(self):
+        print('파라미터 불러오기ㅎㅎ')
 
-        for i, param_input in enumerate(self.param_inputs):
-            param_name = self.param_labels[i].text().replace(':', '').strip()
-            if param_name:
-                params[param_name] = param_input.text()
+    def save_values(self):
+        # 조회할 때마다 API URL과 서비스키를 저장
+        with open("saved_values.txt", "w") as f:
+            f.write(f"{self.api_input.text()}\n{self.service_key_input.text()}")
 
+    def load_saved_values(self):
         try:
-            response = requests.get(api_url, params=params)
-            response.raise_for_status()
+            with open("saved_values.txt", "r") as f:
+                lines = f.readlines()
+                if len(lines) >= 2:
+                    self.api_input.setText(lines[0].strip())
+                    self.service_key_input.setText(lines[1].strip())
+        except FileNotFoundError:
+            pass
+    
+    def download_data(self):
+        print('다운로드')
 
-            # XML 파싱
-            root = ET.fromstring(response.text)
+def main():
+    # 이미 QApplication이 생성되었는지 확인하고, 없으면 생성
+    if not QApplication.instance():
+        global app
+        app = QApplication(sys.argv)
 
-            # 열 이름 및 값 추출
-            columns = ["baseDate", "baseTime", "category", "fcstDate", "fcstTime", "fcstValue", "nx", "ny"]
-            data = []
-
-            for item in root.find(".//items"):
-                row = [item.find(col).text for col in columns]
-                data.append(row)
-
-
-            # 테이블 미리보기
-            self.preview_table.setColumnCount(len(columns))
-            self.preview_table.setHorizontalHeaderLabels(columns)
-            self.preview_table.setRowCount(len(data))
-
-            for row_idx, row_data in enumerate(data):
-                for col_idx, col_data in enumerate(row_data):
-                    item = QTableWidgetItem(col_data)
-                    self.preview_table.setItem(row_idx, col_idx, item)
-
-        except requests.exceptions.RequestException as e:
-            QMessageBox.critical(self, '에러', f"다운로드 중 오류 발생: {e}")
-
-    def download_parameters(self):
-        # Gather parameters from inputs
-        params_data = [{"label": label.text().replace(':', '').strip(), "value": input.text()} for label, input in zip(self.param_labels, self.param_inputs)]
-
-        # Create a connection to the database
-        try:
-            connection = pymysql.connect(
-                host='127.0.0.1',
-                port = '5432',
-                user='postgres',
-                password='1234',
-                database='kwater1',
-                charset='utf8mb4',
-                cursorclass=pymysql.cursors.DictCursor
-            )
-
-            with connection.cursor() as cursor:
-                # Construct the SQL query for inserting data into the table
-                columns = ["api_url", "service_key"] + [f"parameter{i+1}" for i in range(len(params_data))]
-                values = [self.api_input.text(), self.service_key_input.text()] + [param["value"] for param in params_data]
-                sql = f"INSERT INTO Parameters ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(values))})"
-
-                # Execute the SQL query
-                cursor.execute(sql, values)
-
-            # Commit the changes
-            connection.commit()
-
-            QMessageBox.information(self, '성공', '파라미터가 성공적으로 저장되었습니다.')
-
-        except pymysql.MySQLError as e:
-            QMessageBox.critical(self, '에러', f"데이터베이스 오류 발생: {e}")
-
-        finally:
-            # Close the database connection
-            if connection:
-                connection.close()
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
+    # GUI 실행
     downloader = DataDownloader()
     downloader.show()
-    sys.exit(app.exec_())
+
+    # 주피터 노트북에서 실행할 때 블로킹하지 않도록 이벤트 루프를 실행
+    if app:
+        sys.exit(app.exec_())
+
+# 메인 실행
+if __name__ == "__main__":
+    main()
