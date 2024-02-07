@@ -1,6 +1,11 @@
+import codecs
+import csv
 import sys
+import traceback
+import openpyxl
+import pandas as pd
 import psycopg2
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog, QMessageBox
 from PyQt5.QtWidgets import QInputDialog
 from PyQt5.QtWidgets import QHBoxLayout
 import requests
@@ -39,7 +44,7 @@ class ApiDataRetriever:
             QMessageBox.critical(None, '에러', f"다운로드 중 오류 발생: {e}")
             return None
 
-    def data_preview(self): # datatype이 xml일 때만 실행됨...... 이것도 해결
+    def show_preview(self): # datatype이 xml일 때만 실행됨...... 이것도 해결
         api_data = self.call_api()
         root = ET.fromstring(api_data)
 
@@ -162,7 +167,7 @@ class DataDownloader(QWidget):
 
     def data_preview(self):
         data_retriever = ApiDataRetriever(self.api_input, self.service_key_input, self.param_labels, self.param_inputs, self.preview_table)
-        data_retriever.data_preview()
+        data_retriever.show_preview()
 
     def save_values(self):
         # 조회할 때마다 API URL과 서비스키를 저장
@@ -180,8 +185,65 @@ class DataDownloader(QWidget):
             pass
     
     def download_data(self):
-        print('다운로드 왜 안돼')
+        data_retriever = ApiDataRetriever(self.api_input, self.service_key_input, self.param_labels, self.param_inputs, self.preview_table)
+        api_data = data_retriever.call_api()
 
+        if api_data:
+            file_types = "CSV files (*.csv);;XML files (*.xml);;JSON files (*.json);;Excel files (*.xlsx)"
+            file_path, file_type = QFileDialog.getSaveFileName(self, "Save File", "", file_types)
+            if file_path:
+                if file_type == "XML files (*.xml)":
+                    self.save_xml(api_data, file_path)
+                # elif file_type == "JSON files (*.json)":
+                #     self.save_json(api_data, file_path)
+                elif file_type == "CSV files (*.csv)":
+                    self.save_csv(api_data, file_path)
+                elif file_type == "Excel files (*.xlsx)":
+                    self.save_xlsx(api_data, file_path)
+    
+    def save_xml(self, api_data, file_path):
+        with open(file_path, 'w', encoding='utf-8') as file:
+            file.write(api_data)
+
+    def save_csv(self, api_data, file_path):
+        root = ET.fromstring(api_data)
+        columns = ["baseDate", "baseTime", "category", "fcstDate", "fcstTime", "fcstValue", "nx", "ny"]
+        data = []
+
+        for item in root.find(".//items"):
+            row = [item.find(col).text for col in columns]
+            data.append(row)
+
+        with codecs.open(file_path, 'w', 'utf-8-sig') as file:
+            writer = csv.writer(file)
+            writer.writerow(columns)
+            writer.writerows(data)
+
+    
+    
+    def save_xlsx(self, api_data, file_path):
+        try:
+            root = ET.fromstring(api_data)
+            columns = ["baseDate", "baseTime", "category", "fcstDate", "fcstTime", "fcstValue", "nx", "ny"]
+            data = []
+
+            for item in root.find(".//items"):
+                row = [item.find(col).text for col in columns]
+                data.append(row)
+
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            sheet.append(columns)
+            for row_data in data:
+                sheet.append(row_data)
+
+            workbook.save(file_path)
+            print("Excel 파일이 성공적으로 저장되었습니다.")
+
+        except Exception as e:
+            print("예외가 발생하여 프로그램이 비정상적으로 종료되었습니다:")
+            print(traceback.format_exc())
+            
 def main():
     # 이미 QApplication이 생성되었는지 확인하고, 없으면 생성
     if not QApplication.instance():
