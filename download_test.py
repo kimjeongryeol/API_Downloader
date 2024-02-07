@@ -15,14 +15,14 @@ class ApiDataRetriever:
         self.param_inputs = param_inputs
         self.preview_table = preview_table
 
-    def data_preview(self):
+    def call_api(self):
         api_url = self.api_input.text()
         service_key = self.service_key_input.text()
 
         if not service_key:
             QMessageBox.critical(None, '에러', '서비스 키를 입력하세요.')
-            return
-
+            return None
+        
         params = {'serviceKey': service_key}
 
         for i, param_input in enumerate(self.param_inputs):
@@ -33,13 +33,15 @@ class ApiDataRetriever:
         try:
             response = requests.get(api_url, params=params)
             response.raise_for_status()
-            print(response.text)
+            return response.text
 
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(None, '에러', f"다운로드 중 오류 발생: {e}")
+            return None
 
-        # XML 파싱
-        root = ET.fromstring(response.text)
+    def data_preview(self): # datatype이 xml일 때만 실행됨...... 이것도 해결
+        api_data = self.call_api()
+        root = ET.fromstring(api_data)
 
         # 열 이름 및 값 추출
         columns = ["baseDate", "baseTime", "category", "fcstDate", "fcstTime", "fcstValue", "nx", "ny"]
@@ -178,7 +180,7 @@ class DataDownloader(QWidget):
             pass
     
     def download_data(self):
-        print('다운로드')
+        print('다운로드 왜 안돼')
 
 def main():
     # 이미 QApplication이 생성되었는지 확인하고, 없으면 생성
