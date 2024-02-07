@@ -1,5 +1,6 @@
 import codecs
 import csv
+import json
 import sys
 import traceback
 import openpyxl
@@ -194,8 +195,8 @@ class DataDownloader(QWidget):
             if file_path:
                 if file_type == "XML files (*.xml)":
                     self.save_xml(api_data, file_path)
-                # elif file_type == "JSON files (*.json)":
-                #     self.save_json(api_data, file_path)
+                elif file_type == "JSON files (*.json)":
+                    self.save_json(api_data, file_path)
                 elif file_type == "CSV files (*.csv)":
                     self.save_csv(api_data, file_path)
                 elif file_type == "Excel files (*.xlsx)":
@@ -219,7 +220,23 @@ class DataDownloader(QWidget):
             writer.writerow(columns)
             writer.writerows(data)
 
-    
+    def save_json(self, api_data, file_path):
+        # XML 데이터 파싱
+        root = ET.fromstring(api_data)
+
+        # 변환된 JSON 데이터를 저장할 리스트 초기화
+        json_data = []
+
+        # XML 요소를 반복하여 JSON 데이터로 변환
+        for item in root.find(".//items"):
+            row = {}
+            for child in item:
+                row[child.tag] = child.text
+            json_data.append(row)
+
+        # JSON 데이터를 파일에 저장
+        with open(file_path, 'w') as json_file:
+            json.dump(json_data, json_file, indent=4)
     
     def save_xlsx(self, api_data, file_path):
         try:
