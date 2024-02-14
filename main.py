@@ -1,20 +1,16 @@
 import sys
-import pymysql
 import psycopg2
 import requests
 import xml.etree.ElementTree as ET
-import pandas as pd
 import codecs
 import csv
 import json
 import sys
 import traceback
 import openpyxl
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QTextEdit, QTableWidget, QTableWidgetItem, QFileDialog, QHeaderView, QSizePolicy, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QTableWidget, QTableWidgetItem, QFileDialog, QHeaderView, QMessageBox
 from PyQt5.QtWidgets import QInputDialog
 from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtCore import Qt
-from collections import Counter
 from psycopg2.extras import execute_values
 
 class ApiDataRetriever:
@@ -25,6 +21,7 @@ class ApiDataRetriever:
         self.param_inputs = param_inputs
         self.preview_table = preview_table
         self.columns = []
+        self.api_data = None
 
     def call_api(self):
         api_url = self.api_input.text()
@@ -44,37 +41,17 @@ class ApiDataRetriever:
         try:
             response = requests.get(api_url, params=params)
             response.raise_for_status()
-            return response.text
+            self.api_data = response.text  # API 데이터를 저장
+            return self.api_data
 
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(None, '에러', f"다운로드 중 오류 발생: {e}")
             return None
 
-    def download_parameter(self):
-        api_data = self.call_api()
-        root = ET.fromstring(api_data)
-
-        # 열 이름 및 값 추출
-        columns = ["baseDate", "baseTime", "category", "fcstDate", "fcstValue", "nx", "ny"]
-        data = []
-
-        for item in root.find(".//items"):
-            row = [item.find(col).text for col in columns]
-            data.append(row)
-
-        # Set up the table
-        self.preview_table.setColumnCount(len(columns))
-        self.preview_table.setHorizontalHeaderLabels(columns)
-        self.preview_table.setRowCount(len(data))
-
-        for row_idx, row_data in enumerate(data):
-            for col_idx, col_data in enumerate(row_data):
-                item = QTableWidgetItem(col_data)
-                self.preview_table.setItem(row_idx, col_idx, item)
-
     def show_preview(self):
         api_data = self.call_api()
         root = ET.fromstring(api_data)
+        print(self.api_data)
 
         columns = self.get_columns()
         data = []     # 미리보기에 출력할 데이터를 저장할 리스트
@@ -94,14 +71,14 @@ class ApiDataRetriever:
                 item = QTableWidgetItem(col_data)
                 self.preview_table.setItem(row_idx, col_idx, item)
 
-    # def get_apidata(self): # response.text 값을 매번 호출하지말고 get 함수를 이용해서 값만 호출하고 싶음
-
-
     def get_columns(self):
         root = ET.fromstring(self.call_api())  # XML 데이터 파싱하여 루트 요소 가져오기
         first_item = root.find(".//item")
         columns = [child.tag for child in first_item]
         return columns
+    
+    def get_data(self):
+        return self.api_data
     
 def F_ConnectPostDB():
     host = '127.0.0.1'
@@ -217,6 +194,7 @@ class DataDownloader(QWidget):
         super().__init__()
 
         self.init_ui()
+        self.data_retriever = ApiDataRetriever(self.api_input, self.service_key_input, self.param_labels, self.param_inputs, self.preview_table)
 
     def init_ui(self):
         self.setWindowTitle('API 다운로더')
@@ -315,16 +293,14 @@ class DataDownloader(QWidget):
             param_input.setParent(None)
 
     def data_preview(self):
-        data_retriever = ApiDataRetriever(self.api_input, self.service_key_input, self.param_labels, self.param_inputs, self.preview_table)
-        data_retriever.show_preview()
+        self.data_retriever.show_preview()
 
     def download_parameters(self):
         parameter_saver = ParameterSaver(self.api_input, self.service_key_input, self.param_labels, self.param_inputs)
         parameter_saver.save_parameters()
         
     def download_data(self):
-        data_retriever = ApiDataRetriever(self.api_input, self.service_key_input, self.param_labels, self.param_inputs, self.preview_table)
-        api_data = data_retriever.call_api()
+        api_data = self.data_retriever.api_data
 
         if api_data:
             file_types = "CSV files (*.csv);;XML files (*.xml);;JSON files (*.json);;Excel files (*.xlsx)"
@@ -353,7 +329,6 @@ class DataDownloader(QWidget):
         for item in root.findall(".//item"):
             row = [child.text for child in item]
             data.append(row)
-
 
         with codecs.open(file_path, 'w', 'utf-8-sig') as file:
             writer = csv.writer(file)
