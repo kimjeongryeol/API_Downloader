@@ -160,7 +160,7 @@ class ParameterSaver:
         self.param_labels = param_labels
         self.param_inputs = param_inputs
 
-    def save_parameters(self):
+    def save_url(self):
         connection, cursor = self.F_connectPostDB()  # F_connectPostDB 함수로 연결
         if not connection or not cursor:
             return
