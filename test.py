@@ -1,14 +1,15 @@
+import csv
+import json
 import sys
-from urllib.parse import parse_qs, urlparse
+import openpyxl
+import xml.etree.ElementTree as ET
 import psycopg2
 import requests
-import xml.etree.ElementTree as ET
-from tkinter import messagebox
-from psycopg2.extras import execute_values
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, 
     QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, 
-    QInputDialog, QHBoxLayout, QVBoxLayout
+    QInputDialog, QHBoxLayout, QVBoxLayout, QFileDialog, QAbstractItemView
 )
 
 class ApiCall:
@@ -26,7 +27,7 @@ class ApiCall:
             response =  requests.get(self.url, params=params)
             return response
         except requests.exceptions.RequestException as e:
-            messagebox.critical(None, '에러', f"호출 중 오류 발생: {e}")
+            QMessageBox.critical(None, '에러', f"호출 중 오류 발생: {e}")
             return None
         
 class ParameterSaver:
@@ -37,8 +38,6 @@ class ParameterSaver:
         user = 'postgres'
         password = '1234'
         database = 'kwater1'
-
-        global isconnect
 
         try:
             # PostgreSQL 연결
@@ -53,50 +52,72 @@ class ParameterSaver:
             cursor = connection.cursor()
             print("PostgreSQL 데이터베이스 연결 성공!")
 
-            isconnect = 1
+            return connection, cursor
 
-        except (Exception, psycopg2.Error) as error:
-            print("PostgreSQL 오류: ",error)
+        except psycopg2.Error as error:
+            print("PostgreSQL 오류: ", error)
             return None, None
-
-        return connection, cursor
 
     @staticmethod
     def F_ConnectionClose(cursor, connection):
         cursor.close()
         connection.close()
-        isconnect = 0
         print("데이터 베이스 연결 해제")
 
-    def __init__(self, url, api_input, service_key_input, param_labels, param_inputs):
+    def __init__(self, url):
         self.url = url
-        self.api_input = api_input
-        self.service_key_input = service_key_input
-        self.param_labels = param_labels
-        self.param_inputs = param_inputs
 
     def save_parameters(self):
-        connection, cursor = self.F_connectPostDB()  # F_connectPostDB 함수로 연결
+        connection, cursor = self.F_connectPostDB()  
         if not connection or not cursor:
             return
 
         try:
-            self.insert_parameters_data(cursor, connection)
+            cursor.execute("INSERT INTO URL_TB (url) VALUES (%s)", (self.url, ))
+            connection.commit()
             QMessageBox.information(None, '성공', 'URL이 성공적으로 저장되었습니다.')
-        except Exception as e:
+        except psycopg2.Error as e:
+            print(f"에러 발생: {e}")
             QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
         finally:
             if connection:
-                connection.close()
+                self.F_ConnectionClose(cursor, connection)
 
-    def insert_parameters_data(self, cursor, connection):
+class DataParser:
+    @staticmethod
+    def parse_xml(api_data):
         try:
-            cursor.execute("INSERT INTO URL_TB (url) VALUES (%s)", (self.url, ))
-            connection.commit()
-            print("URL이 성공적으로 저장되었습니다.")
-        except psycopg2.Error as e:
-            print(f"에러 발생: {e}")
-            raise e
+            root = ET.fromstring(api_data)
+            columns = []
+            data = []
+
+            # items 요소가 있는지 확인
+            items_element = root.find(".//items")
+            if items_element:
+                # items 요소가 있는 경우, 기존의 처리 방식으로 진행
+                first_item = root.find(".//item")
+                columns = [child.tag for child in first_item]
+
+                for item in items_element:
+                    row = [item.find(col).text for col in columns]
+                    data.append(row)
+            else:
+                # items 요소가 없는 경우
+                sub_data = []
+                result_code = root.find(".//resultCode")
+                if result_code is not None:
+                    columns.append("resultCode")
+                    sub_data.append(result_code.text)
+
+                result_msg = root.find(".//resultMsg")
+                if result_msg is not None:
+                    columns.append("resultMsg")
+                    sub_data.append(result_msg.text)
+                data.append(sub_data)
+            return columns, data
+        except ET.ParseError as e:
+            print("XML 파싱 오류:", e)
+            return None, None  # XML 파싱 오류인 경우 None을 반환
 
 class MyWidget(QWidget):
     def __init__(self):
@@ -107,11 +128,15 @@ class MyWidget(QWidget):
     def setup(self):
         self.setWindowTitle('API 다운로더')
 
-        self.api_label = QLabel('API URL:')
-        self.api_input = QLineEdit(self)
+        self.param_layout = QVBoxLayout()
 
-        self.service_key_label = QLabel('서비스 키:')
-        self.service_key_input = QLineEdit(self)
+        self.api_label = QLabel('API URL')
+        self.api_input = QLineEdit(self)
+        self.add_param_row(self.api_label, self.api_input)
+
+        self.key_label = QLabel('서비스 키')
+        self.key_input = QLineEdit(self)
+        self.add_param_row(self.key_label, self.key_input)
 
         self.param_labels = []
         self.param_inputs = []
@@ -122,41 +147,41 @@ class MyWidget(QWidget):
         self.remove_param_button = QPushButton('-', self)
         self.remove_param_button.clicked.connect(self.remove_parameter)
 
+        self.download_params_button = QPushButton('파라미터 저장', self)
+        self.download_params_button.clicked.connect(self.download_parameters)
+
+        self.show_params_button = QPushButton('파라미터 목록', self)
+        self.show_params_button.clicked.connect(self.show_parameters)
+
         self.call_button = QPushButton('호출', self)
         self.call_button.clicked.connect(self.api_call)
 
-        self.download_params_button = QPushButton('파라미터 다운로드', self)
-        self.download_params_button.clicked.connect(self.download_parameters)
-
         self.download_button = QPushButton('파일 저장')
-        #self.download_button.clicked.connect(self.download_data)
+        self.download_button.clicked.connect(self.download_data)
 
-        self.preview_label = QLabel('미리보기:')
+        self.preview_label = QLabel('미리보기')
         self.preview_table = QTableWidget(self)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.preview_table.verticalHeader().setVisible(False)
 
         # 수직 박스 레이아웃
         v_layout = QVBoxLayout()
-        v_layout.addWidget(self.api_label)
-        v_layout.addWidget(self.api_input)
-        v_layout.addWidget(self.service_key_label)
-        v_layout.addWidget(self.service_key_input)
-
-        # 파라미터 레이블 및 입력 필드를 수직 박스 레이아웃에 추가
-        for i in range(len(self.param_labels)):
-            v_layout.addWidget(self.param_labels[i])
-            v_layout.addWidget(self.param_inputs[i])
+        v_layout.addLayout(self.param_layout)
 
         # 파라미터 추가 및 제거 버튼을 수평 박스 레이아웃에 추가
-        h_button_layout = QHBoxLayout()
-        h_button_layout.addWidget(self.add_param_button)
-        h_button_layout.addWidget(self.remove_param_button)
+        h_button_layout1 = QHBoxLayout()
+        h_button_layout1.addWidget(self.add_param_button)
+        h_button_layout1.addWidget(self.remove_param_button)
 
-        v_layout.addLayout(h_button_layout)
+        v_layout.addLayout(h_button_layout1)
+
+        h_button_layout2 = QHBoxLayout()
+        h_button_layout2.addWidget(self.download_params_button)
+        h_button_layout2.addWidget(self.show_params_button)
+
+        v_layout.addLayout(h_button_layout2)
 
         v_layout.addWidget(self.call_button)
-        v_layout.addWidget(self.download_params_button)
         
         v_layout.addWidget(self.preview_label)
         v_layout.addWidget(self.preview_table)
@@ -165,18 +190,21 @@ class MyWidget(QWidget):
 
         self.setLayout(v_layout)
 
+    def add_param_row(self, label_widget, edit_widget):
+        h_layout = QHBoxLayout()
+        label_widget.setMinimumWidth(100)  # 라벨의 최소 너비 설정
+        h_layout.addWidget(label_widget)
+        h_layout.addWidget(edit_widget)
+        self.param_layout.addLayout(h_layout)
+
     def add_parameter(self):
         param_name, ok = QInputDialog.getText(self, '파라미터 추가', '파라미터명:')
         if ok and param_name:
-            param_label = QLabel(f'{param_name}:')
+            param_label = QLabel(f'{param_name}')
             param_input = QLineEdit(self)
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
-            v_layout = self.layout()
-
-            index = v_layout.indexOf(self.call_button)  # 호출 버튼의 인덱스 찾기
-            v_layout.insertWidget(index-1, param_input)
-            v_layout.insertWidget(index-1, param_label)
+            self.add_param_row(param_label, param_input)
 
     def remove_parameter(self):
         if self.param_labels:
@@ -194,25 +222,11 @@ class MyWidget(QWidget):
         # 입력된 파라미터 수집
         params = {}
         for label, input_field in zip(self.param_labels, self.param_inputs):
-            param_name = label.text().replace(':', '').strip()
+            param_name = label.text()
             param_value = input_field.text()
             if param_name and param_value:
                 params[param_name] = param_value
         return params
-
-    def get_data(self, response_text):
-        # XML 데이터 파싱 및 열 추출
-        root = ET.fromstring(response_text)
-        first_item = root.find(".//item")
-        columns = [child.tag for child in first_item]
-
-        # 데이터 추출
-        data = []
-        for item in root.find(".//items"):
-            row = [item.find(col).text for col in columns]
-            data.append(row)
-
-        return columns, data
 
     def show_preview(self, columns, data):
         # 미리보기 테이블 업데이트
@@ -227,7 +241,7 @@ class MyWidget(QWidget):
 
     def api_call(self):
         url = self.api_input.text()
-        service_key = self.service_key_input.text()
+        service_key = self.key_input.text()
         
         if not service_key:
             QMessageBox.critical(None, '에러', '서비스 키를 입력하세요.')
@@ -244,27 +258,175 @@ class MyWidget(QWidget):
         
         if self.response:
             # API 응답 처리 및 미리보기 업데이트
-            columns, data = self.get_data(self.response.text)
+            columns, data = DataParser.parse_xml(self.response.text)
             self.show_preview(columns, data)
 
     def download_parameters(self):
         if self.response:
-            
-            parameter_saver = ParameterSaver(self.response.url, self.api_input, self.service_key_input, self.param_labels, self.param_inputs)
+            parameter_saver = ParameterSaver(self.response.url)
             parameter_saver.save_parameters()
         else:
             QMessageBox.critical(None, '에러', '먼저 API를 호출하세요.')
             return
+        
+    def show_parameters(self):
+        connection, cursor = ParameterSaver.F_connectPostDB()
+        if not connection or not cursor:
+            return
+
+        try:
+            cursor.execute("SELECT * FROM URL_TB")
+            rows = cursor.fetchall()
+            column_names = ["ID", "PARAM"]
+            num_rows = len(rows)
+            num_cols = len(column_names)
+
+            self.param_table = QTableWidget(num_rows, num_cols)
+            self.param_table.setHorizontalHeaderLabels(column_names)
+
+            for row_idx, row in enumerate(rows):
+                for col_idx, col_value in enumerate(row):
+                    item = QTableWidgetItem(str(col_value))
+                    self.param_table.setItem(row_idx, col_idx, item)
+
+            self.param_table.resizeColumnsToContents()
+            self.param_table.setWindowTitle('파라미터 목록')
+            self.param_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+            self.param_table.itemClicked.connect(self.on_table_item_clicked)
+            self.param_table.show()
+
+            # 파라미터 테이블에 대한 이벤트 연결
+            self.param_table.setEditTriggers(QAbstractItemView.NoEditTriggers)  # 편집 금지
+        except psycopg2.Error as e:
+            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+        finally:
+            ParameterSaver.F_ConnectionClose(cursor, connection)
+
+    def on_table_item_clicked(self):
+        # 클릭된 항목을 가져옴
+        selected_items = self.param_table.selectedItems()
+        if selected_items:
+            # 첫 번째 선택된 아이템을 사용하여 클릭된 행의 데이터에 접근
+            selected_row = selected_items[0].row()
+            # 두 번째 열의 데이터를 가져옴
+            param_value = self.param_table.item(selected_row, 1).text()
+
+            # API 호출
+            try:
+                response = requests.get(param_value)
+                if response.status_code == 200:
+                    # 호출에 성공한 경우 미리보기에 데이터를 표시
+                    # print(response.text)
+                    columns, data = DataParser.parse_xml(response.text)
+                    
+                    self.show_preview(columns, data)
+                else:
+                    # 호출에 실패한 경우 메시지 출력
+                    QMessageBox.critical(None, '에러', 'API 호출에 실패했습니다.')
+            except requests.exceptions.RequestException as e:
+                # 호출 중 오류가 발생한 경우 메시지 출력
+                QMessageBox.critical(None, '에러', f"API 호출 중 오류 발생: {e}")
+
+    def download_data(self):
+        data = self.response.text
+
+        if data:
+            file_types = "CSV files (*.csv);;XML files (*.xml);;JSON files (*.json);;Excel files (*.xlsx)"
+            file_path, file_type = QFileDialog.getSaveFileName(self, "Save File", "", file_types)
+            if file_path:
+                downloader = DataDownload(data)
+                if file_type == "XML files (*.xml)":
+                    downloader.save_xml(file_path)
+                elif file_type == "JSON files (*.json)":
+                    downloader.save_json(file_path)
+                elif file_type == "CSV files (*.csv)":
+                    downloader.save_csv(file_path)
+                elif file_type == "Excel files (*.xlsx)":
+                    downloader.save_xlsx(file_path)
+        else:
+            QMessageBox.critical(None, '에러', 'API 데이터를 가져오지 못했습니다.')
 
 class DataDownload:
-    def save_csv():
-        pass
-    def save_xml():
-        pass
-    def save_json():
-        pass
-    def save_xlsx():
-        pass
+    def __init__(self, api_data):
+        self.api_data = api_data
+
+    def save_xml(self, file_path):
+        try:
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.write(self.api_data)
+            print("XML 파일 저장 성공")
+        except Exception as e:
+            print("XML 파일 저장 실패:", e)
+
+    def save_csv(self, file_path):
+        try:
+             # XML 데이터 파싱 및 열 추출
+            root = ET.fromstring(self.api_data)
+            first_item = root.find(".//item")
+            columns = [child.tag for child in first_item]
+
+            # 데이터 추출
+            csv_data = []
+            for item in root.find(".//items"):
+                row = [item.find(col).text for col in columns]
+                csv_data.append(row)
+
+            with open(file_path, 'w', newline='', encoding='utf-8-sig') as file:
+                writer = csv.writer(file)
+                writer.writerow(columns)
+                writer.writerows(csv_data)
+
+            print("CSV 파일 저장 성공")
+        except Exception as e:
+            print("CSV 파일 저장 실패:", e)
+
+    def save_json(self, file_path):
+        try:
+            # XML 데이터 파싱 및 열 추출
+            root = ET.fromstring(self.api_data)
+            first_item = root.find(".//item")
+
+            # 데이터 추출
+            json_data = []
+            
+            # XML 요소를 반복하여 JSON 데이터로 변환
+            for item in root.find(".//items"):
+                row = {}
+                for child in item:
+                    row[child.tag] = child.text
+                json_data.append(row)
+
+            with open(file_path, 'w') as json_file:
+                json.dump(json_data, json_file, indent=4)
+
+            print("JSON 파일 저장 성공")
+        except Exception as e:
+            print("JSON 파일 저장 실패:", e)
+
+    def save_xlsx(self, file_path):
+        try:
+            # XML 데이터 파싱 및 열 추출
+            root = ET.fromstring(self.api_data)
+            first_item = root.find(".//item")
+            columns = [child.tag for child in first_item]
+
+            # 데이터 추출
+            xlsx_data = []
+            for item in root.find(".//items"):
+                row = [item.find(col).text for col in columns]
+                xlsx_data.append(row)
+
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            sheet.append(columns)
+            for row_data in xlsx_data:
+                sheet.append(row_data)
+
+            workbook.save(file_path)
+
+            print("Excel 파일 저장 성공")
+        except Exception as e:
+            print("Excel 파일 저장 실패:", e)
 
 def main():
     # QApplication이 생성되었는지 확인하고, 없으면 생성
