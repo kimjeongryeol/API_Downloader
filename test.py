@@ -7,7 +7,7 @@ import psycopg2
 import requests
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QLabel, QLineEdit, QPushButton, 
+    QApplication, QWidget, QLabel, QLineEdit, QPushButton, QDialog,
     QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, 
     QInputDialog, QHBoxLayout, QVBoxLayout, QFileDialog, QAbstractItemView
 )
@@ -64,7 +64,8 @@ class ParameterSaver:
         connection.close()
         print("데이터 베이스 연결 해제")
 
-    def __init__(self, url):
+    def __init__(self, id, url):
+        self.id = id
         self.url = url
 
     def save_parameters(self):
@@ -73,7 +74,14 @@ class ParameterSaver:
             return
 
         try:
-            cursor.execute("INSERT INTO URL_TB (url) VALUES (%s)", (self.url, ))
+            # 중복된 ID인지 확인
+            cursor.execute("SELECT COUNT(*) FROM URL_TB WHERE id = %s", (self.id,))
+            count = cursor.fetchone()[0]
+            if count > 0:
+                QMessageBox.warning(None, '중복된 값', '중복된 ID 값입니다.')
+                return
+
+            cursor.execute("INSERT INTO URL_TB (id, url) VALUES (%s, %s)", (self.id, self.url))
             connection.commit()
             QMessageBox.information(None, '성공', 'URL이 성공적으로 저장되었습니다.')
         except psycopg2.Error as e:
@@ -118,6 +126,79 @@ class DataParser:
         except ET.ParseError as e:
             print("XML 파싱 오류:", e)
             return None, None  # XML 파싱 오류인 경우 None을 반환
+        
+class PreviewUpdater:
+    @staticmethod
+    def show_preview(preview_table, columns, data):
+        # 미리보기 테이블 업데이트
+        preview_table.setColumnCount(len(columns))
+        preview_table.setHorizontalHeaderLabels(columns)
+        preview_table.setRowCount(len(data))
+
+        for row_idx, row_data in enumerate(data):
+            for col_idx, col_data in enumerate(row_data):
+                item = QTableWidgetItem(col_data)
+                preview_table.setItem(row_idx, col_idx, item)
+
+class ParameterViewer(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle('파라미터 목록')
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        # 테이블 위젯 생성
+        self.param_table = QTableWidget()
+        self.param_table.resizeColumnsToContents()
+        self.param_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.param_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.load_parameter_list()
+        layout.addWidget(self.param_table)
+
+        # 확인 버튼 추가
+        confirm_button = QPushButton('확인')
+        confirm_button.clicked.connect(self.on_confirm_button_clicked)
+        layout.addWidget(confirm_button)
+
+        self.setLayout(layout)
+        
+    def load_parameter_list(self):
+        connection, cursor = ParameterSaver.F_connectPostDB()
+        if not connection or not cursor:
+            return
+
+        try:
+            cursor.execute("SELECT * FROM URL_TB")
+            rows = cursor.fetchall()
+            num_rows = len(rows)
+            num_cols = len(rows[0]) if num_rows > 0 else 0
+
+            # 행과 열 수 설정
+            self.param_table.setRowCount(num_rows)
+            self.param_table.setColumnCount(num_cols)
+
+            # 헤더 설정
+            header_labels = ["ID", "URL"]  # 컬럼 헤더 이름 설정
+            self.param_table.setHorizontalHeaderLabels(header_labels)
+
+            # 데이터 추가
+            for row_idx, row in enumerate(rows):
+                for col_idx, col_value in enumerate(row):
+                    item = QTableWidgetItem(str(col_value))
+                    self.param_table.setItem(row_idx, col_idx, item)
+
+            self.param_table.resizeColumnsToContents()
+
+        except psycopg2.Error as e:
+            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+
+        finally:
+            ParameterSaver.F_ConnectionClose(cursor, connection)
+
+    def on_confirm_button_clicked(self):
+        pass
 
 class MyWidget(QWidget):
     def __init__(self):
@@ -228,16 +309,16 @@ class MyWidget(QWidget):
                 params[param_name] = param_value
         return params
 
-    def show_preview(self, columns, data):
-        # 미리보기 테이블 업데이트
-        self.preview_table.setColumnCount(len(columns))
-        self.preview_table.setHorizontalHeaderLabels(columns)
-        self.preview_table.setRowCount(len(data))
+    # def show_preview(self, columns, data):
+    #     # 미리보기 테이블 업데이트
+    #     self.preview_table.setColumnCount(len(columns))
+    #     self.preview_table.setHorizontalHeaderLabels(columns)
+    #     self.preview_table.setRowCount(len(data))
 
-        for row_idx, row_data in enumerate(data):
-            for col_idx, col_data in enumerate(row_data):
-                item = QTableWidgetItem(col_data)
-                self.preview_table.setItem(row_idx, col_idx, item)
+    #     for row_idx, row_data in enumerate(data):
+    #         for col_idx, col_data in enumerate(row_data):
+    #             item = QTableWidgetItem(col_data)
+    #             self.preview_table.setItem(row_idx, col_idx, item)
 
     def api_call(self):
         url = self.api_input.text()
@@ -259,73 +340,78 @@ class MyWidget(QWidget):
         if self.response:
             # API 응답 처리 및 미리보기 업데이트
             columns, data = DataParser.parse_xml(self.response.text)
-            self.show_preview(columns, data)
+            PreviewUpdater.show_preview(self.preview_table, columns, data)
 
     def download_parameters(self):
         if self.response:
-            parameter_saver = ParameterSaver(self.response.url)
-            parameter_saver.save_parameters()
+            id, ok = QInputDialog.getText(self, '저장명 입력', '저장할 ID를 입력하세요:')
+            if ok:
+                parameter_saver = ParameterSaver(id, self.response.url)
+                parameter_saver.save_parameters()
         else:
             QMessageBox.critical(None, '에러', '먼저 API를 호출하세요.')
             return
         
     def show_parameters(self):
-        connection, cursor = ParameterSaver.F_connectPostDB()
-        if not connection or not cursor:
-            return
+        self.parameter_viewer = ParameterViewer()
+        self.parameter_viewer.show()
 
-        try:
-            cursor.execute("SELECT * FROM URL_TB")
-            rows = cursor.fetchall()
-            column_names = ["ID", "PARAM"]
-            num_rows = len(rows)
-            num_cols = len(column_names)
+        # connection, cursor = ParameterSaver.F_connectPostDB()
+        # if not connection or not cursor:
+        #     return
 
-            self.param_table = QTableWidget(num_rows, num_cols)
-            self.param_table.setHorizontalHeaderLabels(column_names)
+        # try:
+        #     cursor.execute("SELECT * FROM URL_TB")
+        #     rows = cursor.fetchall()
+        #     column_names = ["ID", "PARAM"]
+        #     num_rows = len(rows)
+        #     num_cols = len(column_names)
 
-            for row_idx, row in enumerate(rows):
-                for col_idx, col_value in enumerate(row):
-                    item = QTableWidgetItem(str(col_value))
-                    self.param_table.setItem(row_idx, col_idx, item)
+        #     self.param_table = QTableWidget(num_rows, num_cols)
+        #     self.param_table.setHorizontalHeaderLabels(column_names)
 
-            self.param_table.resizeColumnsToContents()
-            self.param_table.setWindowTitle('파라미터 목록')
-            self.param_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-            self.param_table.itemClicked.connect(self.on_table_item_clicked)
-            self.param_table.show()
+        #     for row_idx, row in enumerate(rows):
+        #         for col_idx, col_value in enumerate(row):
+        #             item = QTableWidgetItem(str(col_value))
+        #             self.param_table.setItem(row_idx, col_idx, item)
 
-            # 파라미터 테이블에 대한 이벤트 연결
-            self.param_table.setEditTriggers(QAbstractItemView.NoEditTriggers)  # 편집 금지
-        except psycopg2.Error as e:
-            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
-        finally:
-            ParameterSaver.F_ConnectionClose(cursor, connection)
+        #     self.param_table.resizeColumnsToContents()
+        #     self.param_table.setWindowTitle('파라미터 목록')
+        #     self.param_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        #     self.param_table.itemClicked.connect(self.on_table_item_clicked)
+        #     self.param_table.show()
 
-    def on_table_item_clicked(self):
-        # 클릭된 항목을 가져옴
-        selected_items = self.param_table.selectedItems()
-        if selected_items:
-            # 첫 번째 선택된 아이템을 사용하여 클릭된 행의 데이터에 접근
-            selected_row = selected_items[0].row()
-            # 두 번째 열의 데이터를 가져옴
-            param_value = self.param_table.item(selected_row, 1).text()
+        #     # 파라미터 테이블에 대한 이벤트 연결
+        #     self.param_table.setEditTriggers(QAbstractItemView.NoEditTriggers)  # 편집 금지
+        # except psycopg2.Error as e:
+        #     QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+        # finally:
+        #     ParameterSaver.F_ConnectionClose(cursor, connection)
 
-            # API 호출
-            try:
-                response = requests.get(param_value)
-                if response.status_code == 200:
-                    # 호출에 성공한 경우 미리보기에 데이터를 표시
-                    # print(response.text)
-                    columns, data = DataParser.parse_xml(response.text)
+    # def on_table_item_clicked(self):
+    #     # 클릭된 항목을 가져옴
+    #     selected_items = self.param_table.selectedItems()
+    #     if selected_items:
+    #         # 첫 번째 선택된 아이템을 사용하여 클릭된 행의 데이터에 접근
+    #         selected_row = selected_items[0].row()
+    #         # 두 번째 열의 데이터를 가져옴
+    #         param_value = self.param_table.item(selected_row, 1).text()
+
+    #         # API 호출
+    #         try:
+    #             response = requests.get(param_value)
+    #             if response.status_code == 200:
+    #                 # 호출에 성공한 경우 미리보기에 데이터를 표시
+    #                 print(response.text)
+    #                 columns, data = DataParser.parse_xml(response.text)
                     
-                    self.show_preview(columns, data)
-                else:
-                    # 호출에 실패한 경우 메시지 출력
-                    QMessageBox.critical(None, '에러', 'API 호출에 실패했습니다.')
-            except requests.exceptions.RequestException as e:
-                # 호출 중 오류가 발생한 경우 메시지 출력
-                QMessageBox.critical(None, '에러', f"API 호출 중 오류 발생: {e}")
+    #                 PreviewUpdater.show_preview(self.preview_table, columns, data)
+    #             else:
+    #                 # 호출에 실패한 경우 메시지 출력
+    #                 QMessageBox.critical(None, '에러', 'API 호출에 실패했습니다.')
+    #         except requests.exceptions.RequestException as e:
+    #             # 호출 중 오류가 발생한 경우 메시지 출력
+    #             QMessageBox.critical(None, '에러', f"API 호출 중 오류 발생: {e}")
 
     def download_data(self):
         data = self.response.text
@@ -396,7 +482,7 @@ class DataDownload:
                     row[child.tag] = child.text
                 json_data.append(row)
 
-            with open(file_path, 'w') as json_file:
+            with open(file_path, 'w', encoding='utf-8') as json_file:
                 json.dump(json_data, json_file, indent=4)
 
             print("JSON 파일 저장 성공")
@@ -436,6 +522,12 @@ def main():
     
     # GUI 실행
     downloader = MyWidget()
+    
+    # 창 초기 상태를 최대화로 설정하여 창 크기를 조절할 수 있게 함
+    downloader.setWindowState(Qt.WindowMaximized)
+    downloader.setWindowFlags(downloader.windowFlags() | Qt.WindowMaximizeButtonHint)
+    
+    # 주피터 노트북에서 실행할 때 블로킹하지 않도록 이벤트 루프를 실행
     downloader.show()
 
     # 주피터 노트북에서 실행할 때 블로킹하지 않도록 이벤트 루프를 실행
