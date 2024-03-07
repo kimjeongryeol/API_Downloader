@@ -141,8 +141,9 @@ class PreviewUpdater:
                 preview_table.setItem(row_idx, col_idx, item)
 
 class ParameterViewer(QWidget):
-    def __init__(self):
+    def __init__(self, my_widget_instance):
         super().__init__()
+        self.my_widget_instance = my_widget_instance
         self.setWindowTitle('파라미터 목록')
         self.setup_ui()
 
@@ -198,7 +199,21 @@ class ParameterViewer(QWidget):
             ParameterSaver.F_ConnectionClose(cursor, connection)
 
     def on_confirm_button_clicked(self):
-        pass
+        # 선택된 행 가져오기
+        selected_items = self.param_table.selectedItems()
+        if selected_items:
+            selected_row = selected_items[0].row()
+            # 선택된 행의 URL 출력
+            url_item = self.param_table.item(selected_row, 1)  # URL 열에 해당하는 아이템 가져오기
+            if url_item:
+                url = url_item.text()
+                self.my_widget_instance.response = requests.get(url)
+                columns, data = DataParser.parse_xml(self.my_widget_instance.response.text)
+                PreviewUpdater.show_preview(self.my_widget_instance.preview_table, columns, data)
+            else:
+                print("선택된 행의 URL이 없습니다.")
+        else:
+            print("선택된 행이 없습니다.")
 
 class MyWidget(QWidget):
     def __init__(self):
@@ -237,7 +252,7 @@ class MyWidget(QWidget):
         self.call_button = QPushButton('호출', self)
         self.call_button.clicked.connect(self.api_call)
 
-        self.download_button = QPushButton('파일 저장')
+        self.download_button = QPushButton('API 호출정보 저장')
         self.download_button.clicked.connect(self.download_data)
 
         self.preview_label = QLabel('미리보기')
@@ -323,7 +338,7 @@ class MyWidget(QWidget):
     def api_call(self):
         url = self.api_input.text()
         service_key = self.key_input.text()
-        
+
         if not service_key:
             QMessageBox.critical(None, '에러', '서비스 키를 입력하세요.')
             return
@@ -336,12 +351,12 @@ class MyWidget(QWidget):
         
         # API 호출 및 응답 확인
         self.response = api_caller.call(serviceKey=service_key, **params)
-        
         if self.response:
             # API 응답 처리 및 미리보기 업데이트
             columns, data = DataParser.parse_xml(self.response.text)
             PreviewUpdater.show_preview(self.preview_table, columns, data)
-
+        else:
+            print('호출 실패')
     def download_parameters(self):
         if self.response:
             id, ok = QInputDialog.getText(self, '저장명 입력', '저장할 ID를 입력하세요:')
@@ -353,65 +368,8 @@ class MyWidget(QWidget):
             return
         
     def show_parameters(self):
-        self.parameter_viewer = ParameterViewer()
+        self.parameter_viewer = ParameterViewer(self)
         self.parameter_viewer.show()
-
-        # connection, cursor = ParameterSaver.F_connectPostDB()
-        # if not connection or not cursor:
-        #     return
-
-        # try:
-        #     cursor.execute("SELECT * FROM URL_TB")
-        #     rows = cursor.fetchall()
-        #     column_names = ["ID", "PARAM"]
-        #     num_rows = len(rows)
-        #     num_cols = len(column_names)
-
-        #     self.param_table = QTableWidget(num_rows, num_cols)
-        #     self.param_table.setHorizontalHeaderLabels(column_names)
-
-        #     for row_idx, row in enumerate(rows):
-        #         for col_idx, col_value in enumerate(row):
-        #             item = QTableWidgetItem(str(col_value))
-        #             self.param_table.setItem(row_idx, col_idx, item)
-
-        #     self.param_table.resizeColumnsToContents()
-        #     self.param_table.setWindowTitle('파라미터 목록')
-        #     self.param_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        #     self.param_table.itemClicked.connect(self.on_table_item_clicked)
-        #     self.param_table.show()
-
-        #     # 파라미터 테이블에 대한 이벤트 연결
-        #     self.param_table.setEditTriggers(QAbstractItemView.NoEditTriggers)  # 편집 금지
-        # except psycopg2.Error as e:
-        #     QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
-        # finally:
-        #     ParameterSaver.F_ConnectionClose(cursor, connection)
-
-    # def on_table_item_clicked(self):
-    #     # 클릭된 항목을 가져옴
-    #     selected_items = self.param_table.selectedItems()
-    #     if selected_items:
-    #         # 첫 번째 선택된 아이템을 사용하여 클릭된 행의 데이터에 접근
-    #         selected_row = selected_items[0].row()
-    #         # 두 번째 열의 데이터를 가져옴
-    #         param_value = self.param_table.item(selected_row, 1).text()
-
-    #         # API 호출
-    #         try:
-    #             response = requests.get(param_value)
-    #             if response.status_code == 200:
-    #                 # 호출에 성공한 경우 미리보기에 데이터를 표시
-    #                 print(response.text)
-    #                 columns, data = DataParser.parse_xml(response.text)
-                    
-    #                 PreviewUpdater.show_preview(self.preview_table, columns, data)
-    #             else:
-    #                 # 호출에 실패한 경우 메시지 출력
-    #                 QMessageBox.critical(None, '에러', 'API 호출에 실패했습니다.')
-    #         except requests.exceptions.RequestException as e:
-    #             # 호출 중 오류가 발생한 경우 메시지 출력
-    #             QMessageBox.critical(None, '에러', f"API 호출 중 오류 발생: {e}")
 
     def download_data(self):
         data = self.response.text
