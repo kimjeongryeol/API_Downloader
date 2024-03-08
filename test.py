@@ -237,10 +237,10 @@ class MyWidget(QWidget):
         self.param_labels = []
         self.param_inputs = []
 
-        self.add_param_button = QPushButton('+', self)
+        self.add_param_button = QPushButton('파라미터 추가', self)
         self.add_param_button.clicked.connect(self.add_parameter)
 
-        self.remove_param_button = QPushButton('-', self)
+        self.remove_param_button = QPushButton('파라미터 삭제', self)
         self.remove_param_button.clicked.connect(self.remove_parameter)
 
         self.download_params_button = QPushButton('파라미터 저장', self)
@@ -249,7 +249,7 @@ class MyWidget(QWidget):
         self.show_params_button = QPushButton('파라미터 목록', self)
         self.show_params_button.clicked.connect(self.show_parameters)
 
-        self.call_button = QPushButton('호출', self)
+        self.call_button = QPushButton('OpenAPI 호출', self)
         self.call_button.clicked.connect(self.api_call)
 
         self.download_button = QPushButton('API 호출정보 저장')
