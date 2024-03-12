@@ -6,8 +6,9 @@ import xml.etree.ElementTree as ET
 import psycopg2
 import requests
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QLabel, QLineEdit, QPushButton, QDialog,
+    QApplication, QWidget, QLabel, QLineEdit, QPushButton, QSizePolicy,
     QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, 
     QInputDialog, QHBoxLayout, QVBoxLayout, QFileDialog, QAbstractItemView
 )
@@ -138,6 +139,7 @@ class PreviewUpdater:
         for row_idx, row_data in enumerate(data):
             for col_idx, col_data in enumerate(row_data):
                 item = QTableWidgetItem(col_data)
+                item.setTextAlignment(Qt.AlignCenter)  # 데이터를 가운데 정렬
                 preview_table.setItem(row_idx, col_idx, item)
 
 class ParameterViewer(QWidget):
@@ -224,6 +226,11 @@ class MyWidget(QWidget):
     def setup(self):
         self.setWindowTitle('API 다운로더')
 
+        # 글꼴 설정
+        font = QFont()
+        font.setPointSize(10)
+        self.setFont(font)
+
         self.param_layout = QVBoxLayout()
 
         self.api_label = QLabel('API URL')
@@ -238,21 +245,33 @@ class MyWidget(QWidget):
         self.param_inputs = []
 
         self.add_param_button = QPushButton('파라미터 추가', self)
+        self.add_param_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.add_param_button.setFixedHeight(40)
         self.add_param_button.clicked.connect(self.add_parameter)
 
         self.remove_param_button = QPushButton('파라미터 삭제', self)
+        self.remove_param_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.remove_param_button.setFixedHeight(40)
         self.remove_param_button.clicked.connect(self.remove_parameter)
 
         self.download_params_button = QPushButton('파라미터 저장', self)
+        self.download_params_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.download_params_button.setFixedHeight(40)
         self.download_params_button.clicked.connect(self.download_parameters)
 
         self.show_params_button = QPushButton('파라미터 목록', self)
+        self.show_params_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.show_params_button.setFixedHeight(40)
         self.show_params_button.clicked.connect(self.show_parameters)
 
         self.call_button = QPushButton('OpenAPI 호출', self)
+        self.call_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.call_button.setFixedHeight(40)
         self.call_button.clicked.connect(self.api_call)
 
         self.download_button = QPushButton('API 호출정보 저장')
+        self.download_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.download_button.setFixedHeight(40)
         self.download_button.clicked.connect(self.download_data)
 
         self.preview_label = QLabel('미리보기')
@@ -266,31 +285,31 @@ class MyWidget(QWidget):
 
         # 파라미터 추가 및 제거 버튼을 수평 박스 레이아웃에 추가
         h_button_layout1 = QHBoxLayout()
+        h_button_layout1.addWidget(self.show_params_button)
         h_button_layout1.addWidget(self.add_param_button)
         h_button_layout1.addWidget(self.remove_param_button)
+        h_button_layout1.addWidget(self.download_params_button)
 
         v_layout.addLayout(h_button_layout1)
 
         h_button_layout2 = QHBoxLayout()
-        h_button_layout2.addWidget(self.download_params_button)
-        h_button_layout2.addWidget(self.show_params_button)
-
+        h_button_layout2.addWidget(self.call_button)
+        h_button_layout2.addWidget(self.download_button)
         v_layout.addLayout(h_button_layout2)
 
-        v_layout.addWidget(self.call_button)
-        
         v_layout.addWidget(self.preview_label)
         v_layout.addWidget(self.preview_table)
-
-        v_layout.addWidget(self.download_button)
 
         self.setLayout(v_layout)
 
     def add_param_row(self, label_widget, edit_widget):
         h_layout = QHBoxLayout()
         label_widget.setMinimumWidth(100)  # 라벨의 최소 너비 설정
+        label_widget.setMaximumWidth(100)
         h_layout.addWidget(label_widget)
         h_layout.addWidget(edit_widget)
+        h_layout.setSpacing(10)  # 라벨과 입력칸 사이의 간격 설정
+        h_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # 왼쪽 정렬 및 수직 가운데 정렬
         self.param_layout.addLayout(h_layout)
 
     def add_parameter(self):
@@ -298,6 +317,7 @@ class MyWidget(QWidget):
         if ok and param_name:
             param_label = QLabel(f'{param_name}')
             param_input = QLineEdit(self)
+            param_input.setMaximumWidth(200)
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
             self.add_param_row(param_label, param_input)
@@ -323,17 +343,6 @@ class MyWidget(QWidget):
             if param_name and param_value:
                 params[param_name] = param_value
         return params
-
-    # def show_preview(self, columns, data):
-    #     # 미리보기 테이블 업데이트
-    #     self.preview_table.setColumnCount(len(columns))
-    #     self.preview_table.setHorizontalHeaderLabels(columns)
-    #     self.preview_table.setRowCount(len(data))
-
-    #     for row_idx, row_data in enumerate(data):
-    #         for col_idx, col_data in enumerate(row_data):
-    #             item = QTableWidgetItem(col_data)
-    #             self.preview_table.setItem(row_idx, col_idx, item)
 
     def api_call(self):
         url = self.api_input.text()
@@ -481,14 +490,9 @@ def main():
     # GUI 실행
     downloader = MyWidget()
     
-    # 창 초기 상태를 최대화로 설정하여 창 크기를 조절할 수 있게 함
-    downloader.setWindowState(Qt.WindowMaximized)
-    downloader.setWindowFlags(downloader.windowFlags() | Qt.WindowMaximizeButtonHint)
-    
     # 주피터 노트북에서 실행할 때 블로킹하지 않도록 이벤트 루프를 실행
     downloader.show()
 
-    # 주피터 노트북에서 실행할 때 블로킹하지 않도록 이벤트 루프를 실행
     if app:
         sys.exit(app.exec_())
 
