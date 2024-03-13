@@ -3,6 +3,7 @@ import json
 import sys
 import openpyxl
 import xml.etree.ElementTree as ET
+import pandas as pd
 import psycopg2
 import requests
 from PyQt5.QtCore import Qt
@@ -10,7 +11,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QSizePolicy,
     QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, 
-    QInputDialog, QHBoxLayout, QVBoxLayout, QFileDialog, QAbstractItemView
+    QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView
 )
 
 class ApiCall:
@@ -143,9 +144,11 @@ class PreviewUpdater:
                 preview_table.setItem(row_idx, col_idx, item)
 
 class ParameterViewer(QWidget):
-    def __init__(self, my_widget_instance):
+    def __init__(self, my_widget_instance, parent_widget_type, target_url_field="api_url1_edit"):
         super().__init__()
         self.my_widget_instance = my_widget_instance
+        self.parent_widget_type = parent_widget_type
+        self.target_url_field = target_url_field  # 추가된 인자
         self.setWindowTitle('파라미터 목록')
         self.setup_ui()
 
@@ -159,13 +162,13 @@ class ParameterViewer(QWidget):
         self.param_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.load_parameter_list()
         layout.addWidget(self.param_table)
-
         # 확인 버튼 추가
         confirm_button = QPushButton('확인')
         confirm_button.clicked.connect(self.on_confirm_button_clicked)
         layout.addWidget(confirm_button)
 
         self.setLayout(layout)
+        self.resize(800, 600)  # 창의 크기를 너비 800px, 높이 600px로 설정
         
     def load_parameter_list(self):
         connection, cursor = ParameterSaver.F_connectPostDB()
@@ -201,17 +204,22 @@ class ParameterViewer(QWidget):
             ParameterSaver.F_ConnectionClose(cursor, connection)
 
     def on_confirm_button_clicked(self):
-        # 선택된 행 가져오기
         selected_items = self.param_table.selectedItems()
         if selected_items:
             selected_row = selected_items[0].row()
-            # 선택된 행의 URL 출력
-            url_item = self.param_table.item(selected_row, 1)  # URL 열에 해당하는 아이템 가져오기
+            url_item = self.param_table.item(selected_row, 1)
             if url_item:
                 url = url_item.text()
-                self.my_widget_instance.response = requests.get(url)
-                columns, data = DataParser.parse_xml(self.my_widget_instance.response.text)
-                PreviewUpdater.show_preview(self.my_widget_instance.preview_table, columns, data)
+
+                if self.parent_widget_type == "MyWidget":
+                    self.my_widget_instance.response = requests.get(url)
+                    columns, data = DataParser.parse_xml(self.my_widget_instance.response.text)
+                    PreviewUpdater.show_preview(self.my_widget_instance.preview_table, columns, data)
+                elif self.parent_widget_type == "DataJoinerApp":
+                    if self.target_url_field == "api_url1_edit":
+                        self.my_widget_instance.api_url1_edit.setText(url)
+                    elif self.target_url_field == "api_url2_edit":
+                        self.my_widget_instance.api_url2_edit.setText(url)
             else:
                 print("선택된 행의 URL이 없습니다.")
         else:
@@ -220,89 +228,78 @@ class ParameterViewer(QWidget):
 class MyWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.setup()
         self.response = None
+        self.param_labels = []  # 파라미터 라벨 리스트
+        self.param_inputs = []  # 파라미터 입력 필드 리스트
+        self.param_grid_row = 0  # 현재 그리드 레이아웃의 행 위치
+        self.param_grid_col = 0  # 변경: 첫 번째 파라미터부터 첫 번째 열에 배치
+        self.max_cols = 3  # 한 행에 최대 파라미터 개수
+        self.setup()  # UI 설정
 
     def setup(self):
         self.setWindowTitle('API 다운로더')
-
-        # 글꼴 설정
         font = QFont()
         font.setPointSize(10)
         self.setFont(font)
 
-        self.param_layout = QVBoxLayout()
+        main_layout = QVBoxLayout()
 
-        self.api_label = QLabel('API URL')
+        self.fixed_layout = QVBoxLayout()
+        main_layout.addLayout(self.fixed_layout)
+
+        self.api_label = QLabel('API URL:')
         self.api_input = QLineEdit(self)
-        self.add_param_row(self.api_label, self.api_input)
+        self.default_param(self.fixed_layout, self.api_label, self.api_input)
 
-        self.key_label = QLabel('서비스 키')
+        self.key_label = QLabel('서비스 키:')
         self.key_input = QLineEdit(self)
-        self.add_param_row(self.key_label, self.key_input)
+        self.default_param(self.fixed_layout, self.key_label, self.key_input)
 
-        self.param_labels = []
-        self.param_inputs = []
+        self.param_grid_layout = QGridLayout()
+        main_layout.addLayout(self.param_grid_layout)
+        self.param_grid_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
         self.add_param_button = QPushButton('파라미터 추가', self)
-        self.add_param_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.add_param_button.setFixedHeight(40)
         self.add_param_button.clicked.connect(self.add_parameter)
 
         self.remove_param_button = QPushButton('파라미터 삭제', self)
-        self.remove_param_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.remove_param_button.setFixedHeight(40)
         self.remove_param_button.clicked.connect(self.remove_parameter)
 
         self.download_params_button = QPushButton('파라미터 저장', self)
-        self.download_params_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.download_params_button.setFixedHeight(40)
         self.download_params_button.clicked.connect(self.download_parameters)
 
         self.show_params_button = QPushButton('파라미터 목록', self)
-        self.show_params_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.show_params_button.setFixedHeight(40)
         self.show_params_button.clicked.connect(self.show_parameters)
 
         self.call_button = QPushButton('OpenAPI 호출', self)
-        self.call_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.call_button.setFixedHeight(40)
         self.call_button.clicked.connect(self.api_call)
 
-        self.download_button = QPushButton('API 호출정보 저장')
-        self.download_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.download_button.setFixedHeight(40)
+        self.download_button = QPushButton('API 호출정보 저장', self)
         self.download_button.clicked.connect(self.download_data)
 
+        button_layout1 = QHBoxLayout()
+        button_layout1.addWidget(self.show_params_button)
+        button_layout1.addWidget(self.add_param_button)
+        button_layout1.addWidget(self.remove_param_button)
+        button_layout1.addWidget(self.download_params_button)
+
+        button_layout2 = QHBoxLayout()
+        button_layout2.addWidget(self.call_button)
+        button_layout2.addWidget(self.download_button)
+
+        main_layout.addLayout(button_layout1)
+        main_layout.addLayout(button_layout2)
+
         self.preview_label = QLabel('미리보기')
+        main_layout.addWidget(self.preview_label)
         self.preview_table = QTableWidget(self)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.preview_table.verticalHeader().setVisible(False)
+        main_layout.addWidget(self.preview_table)
 
-        # 수직 박스 레이아웃
-        v_layout = QVBoxLayout()
-        v_layout.addLayout(self.param_layout)
+        self.setLayout(main_layout)
 
-        # 파라미터 추가 및 제거 버튼을 수평 박스 레이아웃에 추가
-        h_button_layout1 = QHBoxLayout()
-        h_button_layout1.addWidget(self.show_params_button)
-        h_button_layout1.addWidget(self.add_param_button)
-        h_button_layout1.addWidget(self.remove_param_button)
-        h_button_layout1.addWidget(self.download_params_button)
-
-        v_layout.addLayout(h_button_layout1)
-
-        h_button_layout2 = QHBoxLayout()
-        h_button_layout2.addWidget(self.call_button)
-        h_button_layout2.addWidget(self.download_button)
-        v_layout.addLayout(h_button_layout2)
-
-        v_layout.addWidget(self.preview_label)
-        v_layout.addWidget(self.preview_table)
-
-        self.setLayout(v_layout)
-
-    def add_param_row(self, label_widget, edit_widget):
+    def default_param(self, layout, label_widget, edit_widget):
         h_layout = QHBoxLayout()
         label_widget.setMinimumWidth(100)  # 라벨의 최소 너비 설정
         label_widget.setMaximumWidth(100)
@@ -310,17 +307,31 @@ class MyWidget(QWidget):
         h_layout.addWidget(edit_widget)
         h_layout.setSpacing(10)  # 라벨과 입력칸 사이의 간격 설정
         h_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # 왼쪽 정렬 및 수직 가운데 정렬
-        self.param_layout.addLayout(h_layout)
+        layout.addLayout(h_layout)
+
+    def add_param_to_grid(self, label_widget, edit_widget):
+        layout = QHBoxLayout()
+        layout.addWidget(label_widget)
+        layout.addWidget(edit_widget)
+        self.param_grid_layout.addLayout(layout, self.param_grid_row, self.param_grid_col)
+
+        self.param_grid_col += 1
+        if self.param_grid_col >= self.max_cols:
+            self.param_grid_col = 0
+            self.param_grid_row += 1
 
     def add_parameter(self):
         param_name, ok = QInputDialog.getText(self, '파라미터 추가', '파라미터명:')
         if ok and param_name:
             param_label = QLabel(f'{param_name}')
+            param_label.setMinimumWidth(100)  # 라벨의 최소 너비 설정
+            param_label.setMaximumWidth(100)
             param_input = QLineEdit(self)
             param_input.setMaximumWidth(200)
+            param_input.setMinimumWidth(200)
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
-            self.add_param_row(param_label, param_input)
+            self.add_param_to_grid(param_label, param_input)
 
     def remove_parameter(self):
         if self.param_labels:
@@ -377,7 +388,8 @@ class MyWidget(QWidget):
             return
         
     def show_parameters(self):
-        self.parameter_viewer = ParameterViewer(self)
+        # 'MyWidget'를 parent_widget_type 인자로 전달
+        self.parameter_viewer = ParameterViewer(self, "MyWidget")
         self.parameter_viewer.show()
 
     def download_data(self):
@@ -480,22 +492,154 @@ class DataDownload:
             print("Excel 파일 저장 성공")
         except Exception as e:
             print("Excel 파일 저장 실패:", e)
+            
+def fetch_data(api_url):
+    response = requests.get(api_url)
+    if 'application/json' in response.headers['Content-Type']:
+        data = response.json()  # JSON 데이터 구조에 따라 수정 필요
+        df = pd.DataFrame(data)  # 적절한 키를 사용하여 DataFrame 생성
+    else:
+        data = parse_xml_to_dict(response.text)
+        df = pd.DataFrame(data)
+    return df
 
-def main():
-    # QApplication이 생성되었는지 확인하고, 없으면 생성
-    if not QApplication.instance():
-        global app
+def parse_xml_to_dict(xml_data):
+    root = ET.fromstring(xml_data)
+    data_list = []
+    for item in root.findall('.//item'):
+        data = {child.tag: child.text for child in item}
+        data_list.append(data)
+    return data_list
+
+class DataJoinerApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('API Data Joiner')
+        self.setGeometry(100, 100, 600, 400)
+        self.setStyleSheet("background-color: #f0f0f0;")
+        
+        layout = QVBoxLayout()
+
+        self.api_url1_edit = QLineEdit(self)
+        self.select_button1 = QPushButton('URL1 선택', self)
+        # URL1 선택 버튼에 대한 클릭 이벤트 처리
+        self.select_button1.clicked.connect(lambda: self.show_parameters('api_url1_edit'))
+        
+        self.api_url2_edit = QLineEdit(self)
+        self.select_button2 = QPushButton('URL2 선택', self)
+        # URL2 선택 버튼에 대한 클릭 이벤트 처리
+        self.select_button2.clicked.connect(lambda: self.show_parameters('api_url2_edit'))
+
+        # 스타일 설정
+        self.api_url1_edit.setStyleSheet("background-color: white; border: 1px solid #bfbfbf; height: 25px;")
+        self.api_url2_edit.setStyleSheet("background-color: white; border: 1px solid #bfbfbf; height: 25px;")
+        
+        # UI 구성
+        layout.addWidget(QLabel('첫 번째 API 주소:'))
+        layout.addWidget(self.api_url1_edit)
+        layout.addWidget(self.select_button1)  # 올바른 버튼 변수명 사용
+        
+        layout.addWidget(QLabel('두 번째 API 주소:'))
+        layout.addWidget(self.api_url2_edit)
+        layout.addWidget(self.select_button2)  # 올바른 버튼 변수명 사용
+
+        self.join_column_edit = QLineEdit(self)
+        layout.addWidget(QLabel('조인할 컬럼 이름:'))
+        layout.addWidget(self.join_column_edit)
+
+        self.join_button = QPushButton('데이터 조인', self)
+        self.join_button.clicked.connect(self.join_data)
+        layout.addWidget(self.join_button)
+
+        self.result_table = QTableWidget(self)
+        layout.addWidget(self.result_table)
+
+        self.setLayout(layout)
+
+    def show_parameters(self, target_field):
+        self.parameter_viewer = ParameterViewer(self, "DataJoinerApp", target_url_field=target_field)
+        self.parameter_viewer.show()
+
+
+    def join_data(self):
+        api_url_1 = self.api_url1_edit.text()
+        api_url_2 = self.api_url2_edit.text()
+        join_column = self.join_column_edit.text()
+
+        if not api_url_1 or not api_url_2 or not join_column:
+            QMessageBox.warning(self, '경고', 'API URL과 조인할 컬럼 이름을 입력해야 합니다!')
+            return
+        
+        df1 = fetch_data(api_url_1)
+        df2 = fetch_data(api_url_2)
+
+        if df1 is None or df2 is None:
+            QMessageBox.critical(self, '오류', '데이터를 가져오는 데 실패했습니다. API URL을 확인해주세요.')
+            return
+
+        if join_column in df1.columns and join_column in df2.columns:
+            joined_data = pd.merge(df1, df2, on=join_column, how='inner')
+            self.show_data_in_table(joined_data)
+        else:
+            QMessageBox.warning(self, '오류', '조인할 컬럼이 누락되었거나 잘못되었습니다.')
+            self.result_table.clear()  # 테이블 초기화
+            self.result_table.setRowCount(0)
+            self.result_table.setColumnCount(0)        
+
+    def show_data_in_table(self, data):
+        self.result_table.setRowCount(data.shape[0])
+        self.result_table.setColumnCount(data.shape[1])
+        self.result_table.setHorizontalHeaderLabels(data.columns)
+
+        for row in range(data.shape[0]):
+            for col in range(data.shape[1]):
+                item = QTableWidgetItem(str(data.iloc[row, col]))
+                self.result_table.setItem(row, col, item)
+
+class MainApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.myWidgetApp = None  # MyWidget 인스턴스를 저장할 변수
+        self.dataJoiner = None  # DataJoinerApp 인스턴스를 저장할 변수 추가
+        self.initUI()
+    
+    def initUI(self):
+        self.setWindowTitle('코딩의 신 정 인 영')
+        self.setGeometry(500,500,500,500)
+        
+        # 버튼 두 개가 있는 수평 레이아웃 생성
+        hbox = QHBoxLayout()
+        btn1 = QPushButton('API 조회', self)
+        btn2 = QPushButton('조인', self)
+        
+        btn1.clicked.connect(self.showMyWidgetApp)  # 버튼 1 클릭 시 showMyWidgetApp 메서드 호출
+        btn2.clicked.connect(self.showDataJoinerApp)  # 버튼 2 클릭 시 showDataJoinerApp 메서드 호출
+        
+        hbox.addWidget(btn1)
+        hbox.addWidget(btn2)
+
+        # 버튼 레이아웃을 메인 레이아웃에 추가
+        vbox = QVBoxLayout()
+        vbox.addLayout(hbox)
+        self.setLayout(vbox)
+
+    def showMyWidgetApp(self):
+        if self.myWidgetApp is None:  # MyWidget 인스턴스가 없으면 생성
+            self.myWidgetApp = MyWidget()  # 이 부분을 MyWidget()으로 수정
+        self.myWidgetApp.show()  # MyWidget 표시
+
+    def showDataJoinerApp(self):
+        if self.dataJoiner is None:  # DataJoinerApp 인스턴스가 없으면 생성
+            self.dataJoiner = DataJoinerApp()
+        self.dataJoiner.show()  # DataJoinerApp 표시
+
+if __name__ == '__main__':
+    app = QApplication.instance()  # 기존 인스턴스 확인
+    if not app:  # 인스턴스가 없을 경우 새로 생성
         app = QApplication(sys.argv)
-    
-    # GUI 실행
-    downloader = MyWidget()
-    
-    # 주피터 노트북에서 실행할 때 블로킹하지 않도록 이벤트 루프를 실행
-    downloader.show()
-
-    if app:
-        sys.exit(app.exec_())
-
-# 메인 실행
-if __name__ == "__main__":
-    main()
+    mainApp = MainApp()  # MainApp 인스턴스 생성
+    mainApp.show()
+    sys.exit(app.exec_())
