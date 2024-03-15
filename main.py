@@ -209,22 +209,25 @@ class ParameterViewer(QWidget):
 
                 if self.parent_widget_type == "MyWidget":
 
-                    # id_item = self.param_table.item(selected_row, 0)
-                    # id = id_item.text()
+                    id_item = self.param_table.item(selected_row, 0)
+                    id = id_item.text()
 
-                    # try:
-                    #     # 해당 ID 값을 가진 행의 파라미터 값 출력을 위해 DB에서 해당 값을 가져옴
-                    #     connection, cursor = ParameterSaver.F_connectPostDB()
-                    #     cursor.execute("SELECT param FROM PARAMS_TB WHERE id = %s", (id,))
-                    #     rows = cursor.fetchall()
+                    try:
+                        # 해당 ID 값을 가진 행의 파라미터 값 출력을 위해 DB에서 해당 값을 가져옴
+                        connection, cursor = ParameterSaver.F_connectPostDB()
+                        cursor.execute("SELECT param FROM PARAMS_TB WHERE id = %s", (id,))
+                        rows = cursor.fetchall()
                         
-                    #     for row in rows:  # 흠.... 어떻게 해결하지?
-                    #         x = row[0].split("=")
-                    #         print(row[0].split("="))
-                    # except psycopg2.Error as e:
-                    #     print(f"에러 발생: {e}")
-                    # finally:
-                    #     ParameterSaver.F_ConnectionClose(cursor, connection)
+                        parameters = {}
+                        for row in rows[3:]:
+                            parts = row[0].split("=")
+                            parameters[parts[0]] = parts[1]
+                        self.my_widget_instance.auto_add_parameters(parameters)
+
+                    except psycopg2.Error as e:
+                        print(f"에러 발생: {e}")
+                    finally:
+                        ParameterSaver.F_ConnectionClose(cursor, connection)
 
                     self.my_widget_instance.origin_data = requests.get(url)
                     self.my_widget_instance.df_data = DataParser.parse_xml(self.my_widget_instance.origin_data.text)
@@ -351,6 +354,19 @@ class MyWidget(QWidget):
             self.add_param_to_grid(param_label, param_input)
 
             param_input.setFocus()
+            
+    def auto_add_parameters(self, parameters):
+        for key, value in parameters.items():
+            param_label = QLabel(key)
+            param_label.setMinimumWidth(100)
+            param_label.setMaximumWidth(100)
+            param_input = QLineEdit(self)
+            param_input.setMaximumWidth(200)
+            param_input.setMinimumWidth(200)
+            param_input.setText(value)
+            self.param_labels.append(param_label)
+            self.param_inputs.append(param_input)
+            self.add_param_to_grid(param_label, param_input)
 
     def remove_parameter(self):
         if self.param_labels:
