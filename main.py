@@ -217,6 +217,9 @@ class ParameterViewer(QWidget):
                         connection, cursor = ParameterSaver.F_connectPostDB()
                         cursor.execute("SELECT param FROM PARAMS_TB WHERE id = %s", (id,))
                         rows = cursor.fetchall()
+
+                        self.my_widget_instance.api_input.setText(rows[0][0].split('=')[0])
+                        self.my_widget_instance.key_input.setText(rows[2][0].split('=')[1])
                         
                         parameters = {}
                         for row in rows[3:]:
