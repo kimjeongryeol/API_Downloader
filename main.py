@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import psycopg2
 import requests
+from urllib.parse import unquote
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
@@ -219,7 +220,7 @@ class ParameterViewer(QWidget):
                         rows = cursor.fetchall()
 
                         self.my_widget_instance.api_input.setText(rows[0][0].split('=')[0])
-                        self.my_widget_instance.key_input.setText(rows[2][0].split('=')[1])
+                        self.my_widget_instance.key_input.setText(unquote(rows[2][0].split('=')[1]))
                         
                         parameters = {}
                         for row in rows[3:]:
