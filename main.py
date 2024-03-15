@@ -90,41 +90,41 @@ class ParameterSaver:
             if connection:
                 self.F_ConnectionClose(cursor, connection)
 
-class DataParser:
-    @staticmethod
-    def parse_xml(api_data): # 데이터 프레임으로 바꿔주는 것
-        try:
-            root = ET.fromstring(api_data)
-            # DataFrame을 만들기 위한 빈 리스트 생성
-            data_list = []
+# class DataParser: ## 이게 사실 fetch 함수랑 같은 기능이었음!! 필요없을 듯 대신 참고해서 수정하기~~
+#     @staticmethod
+#     def parse_xml(api_data): # 데이터 프레임으로 바꿔주는 것
+#         try:
+#             root = ET.fromstring(api_data)
+#             # DataFrame을 만들기 위한 빈 리스트 생성
+#             data_list = []
 
-            # items 요소가 있는지 확인
-            items_element = root.find(".//items")
-            if items_element:
-                # items 내부의 item 데이터 추출
-                for item in root.findall('.//item'):
-                    item_data = {}
-                    for child in item:
-                        item_data[child.tag] = child.text
-                    data_list.append(item_data)
-            else:
-                pass
-                # items 요소가 없는 경우
-                # sub_data = []
-                # result_code = root.find(".//resultCode")
-                # if result_code is not None:
-                #     columns.append("resultCode")
-                #     sub_data.append(result_code.text)
+#             # items 요소가 있는지 확인
+#             items_element = root.find(".//items")
+#             if items_element:
+#                 # items 내부의 item 데이터 추출
+#                 for item in root.findall('.//item'):
+#                     item_data = {}
+#                     for child in item:
+#                         item_data[child.tag] = child.text
+#                     data_list.append(item_data)
+#             else:
+#                 pass
+#                 # items 요소가 없는 경우
+#                 # sub_data = []
+#                 # result_code = root.find(".//resultCode")
+#                 # if result_code is not None:
+#                 #     columns.append("resultCode")
+#                 #     sub_data.append(result_code.text)
 
-                # result_msg = root.find(".//resultMsg")
-                # if result_msg is not None:
-                #     columns.append("resultMsg")
-                #     sub_data.append(result_msg.text)
-                # data.append(sub_data)
-            return pd.DataFrame(data_list)
-        except ET.ParseError as e:
-            print("XML 파싱 오류:", e)
-            return None  # XML 파싱 오류인 경우 None을 반환
+#                 # result_msg = root.find(".//resultMsg")
+#                 # if result_msg is not None:
+#                 #     columns.append("resultMsg")
+#                 #     sub_data.append(result_msg.text)
+#                 # data.append(sub_data)
+#             return pd.DataFrame(data_list)
+#         except ET.ParseError as e:
+#             print("XML 파싱 오류:", e)
+#             return None  # XML 파싱 오류인 경우 None을 반환
         
 class PreviewUpdater:
     @staticmethod
@@ -233,7 +233,7 @@ class ParameterViewer(QWidget):
                         ParameterSaver.F_ConnectionClose(cursor, connection)
 
                     self.my_widget_instance.origin_data = requests.get(url)
-                    self.my_widget_instance.df_data = DataParser.parse_xml(self.my_widget_instance.origin_data.text)
+                    self.my_widget_instance.df_data = fetch_data(self.my_widget_instance.origin_data.url)
                     data = self.my_widget_instance.df_data
                     PreviewUpdater.show_preview(self.my_widget_instance.preview_table, data)
                 elif self.parent_widget_type == "DataJoinerApp":
@@ -409,7 +409,7 @@ class MyWidget(QWidget):
 
         # API 호출
         self.origin_data = api_caller.call(serviceKey=service_key, **params)
-        self.df_data = DataParser.parse_xml(self.origin_data.text)
+        self.df_data = fetch_data(self.origin_data.url)
         if not self.df_data.empty:
             PreviewUpdater.show_preview(self.preview_table, self.df_data)
         else:
@@ -496,12 +496,18 @@ def fetch_data(api_url):
         df = pd.DataFrame(data)
     return df
 
-def parse_xml_to_dict(xml_data):
-    root = ET.fromstring(xml_data)
+def parse_xml_to_dict(xml_data): 
     data_list = []
-    for item in root.findall('.//item'):
-        data = {child.tag: child.text for child in item}
-        data_list.append(data)
+    try:
+        root = ET.fromstring(xml_data)
+        if root.findall('.//item'):
+            for item in root.findall('.//item'):
+                data = {child.tag: child.text for child in item}
+                data_list.append(data)
+        else: # item이 없는 경우에도 처리해야함!!
+            pass
+    except ET.ParseError as e:
+        print("XML 파싱 오류:", e)
     return data_list
 
 class DataJoinerApp(QWidget):
