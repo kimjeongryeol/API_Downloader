@@ -1,6 +1,5 @@
 import json
 import sys
-from openpyxl.styles import Font
 import xml.etree.ElementTree as ET
 import pandas as pd
 import psycopg2
