@@ -209,22 +209,22 @@ class ParameterViewer(QWidget):
 
                 if self.parent_widget_type == "MyWidget":
 
-                    id_item = self.param_table.item(selected_row, 0)
-                    id = id_item.text()
+                    # id_item = self.param_table.item(selected_row, 0)
+                    # id = id_item.text()
 
-                    try:
-                        # 해당 ID 값을 가진 행의 파라미터 값 출력을 위해 DB에서 해당 값을 가져옴
-                        connection, cursor = ParameterSaver.F_connectPostDB()
-                        cursor.execute("SELECT param FROM PARAMS_TB WHERE id = %s", (id,))
-                        rows = cursor.fetchall()
+                    # try:
+                    #     # 해당 ID 값을 가진 행의 파라미터 값 출력을 위해 DB에서 해당 값을 가져옴
+                    #     connection, cursor = ParameterSaver.F_connectPostDB()
+                    #     cursor.execute("SELECT param FROM PARAMS_TB WHERE id = %s", (id,))
+                    #     rows = cursor.fetchall()
                         
-                        for row in rows:  # 흠.... 어떻게 해결하지?
-                            x = row[0].split("=")
-                            print(row[0].split("="))
-                    except psycopg2.Error as e:
-                        print(f"에러 발생: {e}")
-                    finally:
-                        ParameterSaver.F_ConnectionClose(cursor, connection)
+                    #     for row in rows:  # 흠.... 어떻게 해결하지?
+                    #         x = row[0].split("=")
+                    #         print(row[0].split("="))
+                    # except psycopg2.Error as e:
+                    #     print(f"에러 발생: {e}")
+                    # finally:
+                    #     ParameterSaver.F_ConnectionClose(cursor, connection)
 
                     self.my_widget_instance.origin_data = requests.get(url)
                     self.my_widget_instance.df_data = DataParser.parse_xml(self.my_widget_instance.origin_data.text)
@@ -350,7 +350,7 @@ class MyWidget(QWidget):
             self.param_inputs.append(param_input)
             self.add_param_to_grid(param_label, param_input)
 
-            param_input.setFocus
+            param_input.setFocus()
 
     def remove_parameter(self):
         if self.param_labels:
