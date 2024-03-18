@@ -183,7 +183,7 @@ class ParameterViewer(QWidget):
             self.param_table.setColumnCount(num_cols)
 
             # 헤더 설정
-            header_labels = ["ID", "URL"]  # 컬럼 헤더 이름 설정
+            header_labels = ["ID", "URL"] 
             self.param_table.setHorizontalHeaderLabels(header_labels)
 
             # 데이터 추가
@@ -262,6 +262,7 @@ class MyWidget(QWidget):
 
     def setup(self):
         self.setWindowTitle('API 다운로더')
+        self.setGeometry(600, 600, 600, 600)
         font = QFont()
         font.setPointSize(10)
         self.setFont(font)
@@ -360,6 +361,20 @@ class MyWidget(QWidget):
             param_input.setFocus()
             
     def auto_add_parameters(self, parameters):
+        while self.param_labels:
+            param_label = self.param_labels.pop()
+            param_input = self.param_inputs.pop()
+            param_label.deleteLater()
+            param_input.deleteLater()
+            self.param_grid_layout.removeWidget(param_label)
+            self.param_grid_layout.removeWidget(param_input)
+            param_label.setParent(None)
+            param_input.setParent(None)
+
+        self.param_grid_row = 0
+        self.param_grid_col = 0
+
+        # 새로운 파라미터들 추가
         for key, value in parameters.items():
             param_label = QLabel(key)
             param_label.setMinimumWidth(100)
@@ -383,6 +398,11 @@ class MyWidget(QWidget):
             v_layout.removeWidget(param_input)
             param_label.setParent(None)
             param_input.setParent(None)
+
+            self.param_grid_col -= 1
+            if self.param_grid_col < 0:
+                self.param_grid_col = self.max_cols - 1
+                self.param_grid_row -= 1
 
     def get_parameters(self):
         # 입력된 파라미터 수집
@@ -480,7 +500,7 @@ class DataDownload:
             
     def save_xlsx(self, file_path):
         try:
-        # 엑셀 파일로 저장할 때는 ExcelWriter 객체를 생성하여 사용합니다.
+        # 엑셀 파일로 저장할 때는 ExcelWriter 객체를 생성하여 사용
             with pd.ExcelWriter(file_path, engine='xlsxwriter') as writer:
                 self.api_data.to_excel(writer, index=False)
             print("엑셀 파일 저장 성공")
@@ -489,12 +509,12 @@ class DataDownload:
                 
 def fetch_data(api_url):
     response = requests.get(api_url)
-    if 'application/json' in response.headers['Content-Type']:
-        data = response.json()  # JSON 데이터 구조에 따라 수정 필요
-        df = pd.DataFrame(data)  # 적절한 키를 사용하여 DataFrame 생성
-    else:
-        data = parse_xml_to_dict(response.text)
-        df = pd.DataFrame(data)
+    # if 'application/json' in response.headers['Content-Type']:
+    #     data = response.json()  # JSON 데이터 구조에 따라 수정 필요
+    #     df = pd.DataFrame(data)  # 적절한 키를 사용하여 DataFrame 생성
+    # else:
+    data = parse_xml_to_dict(response.text)
+    df = pd.DataFrame(data)
     return df
 
 def parse_xml_to_dict(xml_data): 
@@ -505,8 +525,16 @@ def parse_xml_to_dict(xml_data):
             for item in root.findall('.//item'):
                 data = {child.tag: child.text for child in item}
                 data_list.append(data)
-        else: # item이 없는 경우에도 처리해야함!!
-            pass
+        else:
+            data_dict = {}
+            result_code = root.find(".//resultCode")
+            if result_code is not None:
+                data_dict['resultCode'] = result_code.text
+
+            result_msg = root.find(".//resultMsg")
+            if result_msg is not None:
+                data_dict['resultMsg'] = result_msg.text
+            data_list.append(data_dict)
     except ET.ParseError as e:
         print("XML 파싱 오류:", e)
     return data_list
