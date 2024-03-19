@@ -654,15 +654,16 @@ class MainApp(QWidget):
         self.initUI()
     
     def initUI(self):
-        self.setWindowTitle('코딩의 신 정 인 영')
-        self.setGeometry(500,500,500,500)
+        self.setWindowTitle('API')
+        self.setGeometry(500,500,200,200)
         
         # 버튼 두 개가 있는 수평 레이아웃 생성
-        hbox = QHBoxLayout()
+        hbox = QVBoxLayout()
+
         btn1 = QPushButton('API 조회', self)
-        btn2 = QPushButton('조인', self)
-        
         btn1.clicked.connect(self.showMyWidgetApp)  # 버튼 1 클릭 시 showMyWidgetApp 메서드 호출
+        
+        btn2 = QPushButton('조인', self)
         btn2.clicked.connect(self.showDataJoinerApp)  # 버튼 2 클릭 시 showDataJoinerApp 메서드 호출
         
         hbox.addWidget(btn1)
