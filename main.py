@@ -273,11 +273,11 @@ class MyWidget(QWidget):
         main_layout.addLayout(self.fixed_layout)
 
         self.api_label = QLabel('API URL:')
-        self.api_input = QLineEdit(self)
+        self.api_input = EnterLineEdit(self)
         self.default_param(self.fixed_layout, self.api_label, self.api_input)
 
         self.key_label = QLabel('serviceKey:')
-        self.key_input = QLineEdit(self)
+        self.key_input = EnterLineEdit(self)
         self.default_param(self.fixed_layout, self.key_label, self.key_input)
 
         self.param_grid_layout = QGridLayout()
@@ -351,7 +351,7 @@ class MyWidget(QWidget):
             param_label = QLabel(f'{param_name}')
             param_label.setMinimumWidth(100)  # 라벨의 최소 너비 설정
             param_label.setMaximumWidth(100)
-            param_input = QLineEdit(self)
+            param_input = EnterLineEdit(self)
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
             self.param_labels.append(param_label)
@@ -379,7 +379,7 @@ class MyWidget(QWidget):
             param_label = QLabel(key)
             param_label.setMinimumWidth(100)
             param_label.setMaximumWidth(100)
-            param_input = QLineEdit(self)
+            param_input = EnterLineEdit(self)
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
             param_input.setText(value)
@@ -468,6 +468,17 @@ class MyWidget(QWidget):
                     downloader.save_xlsx(file_path)
         else:
             QMessageBox.critical(None, '에러', 'API 데이터를 가져오지 못했습니다.')
+            
+# Enter를 눌렀을 때 다음 위젯으로 넘어가는 QLineEdit 서브클래스
+class EnterLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super(EnterLineEdit, self).__init__(parent)
+
+    def keyPressEvent(self, event):
+        if event.key() in [Qt.Key_Return, Qt.Key_Enter]:
+            self.focusNextChild()
+        else:
+            super().keyPressEvent(event)
 
 class DataDownload:
     def __init__(self, api_data):
