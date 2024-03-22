@@ -1,16 +1,17 @@
 import json
+import sqlite3
 import sys
 import xml.etree.ElementTree as ET
 import pandas as pd
 import psycopg2
 import requests
-from urllib.parse import unquote
-from PyQt5.QtCore import Qt
+from urllib.parse import parse_qs, urlparse
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, 
-    QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView
-)
+    QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QDialog, QProgressBar
+    )
 
 class ApiCall:
     def __init__(self, key, url):
@@ -20,113 +21,101 @@ class ApiCall:
     def call(self, **kwargs):
         params = {'dataType': 'XML'}
         params['serviceKey'] = self.key
-    
+
         for key in kwargs.keys():
-            params[key] = kwargs[key]
+                params[key] = kwargs[key]
         try:
             response =  requests.get(self.url, params=params)
-            return response  #### response임.........
+            return response
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(None, '에러', f"호출 중 오류 발생: {e}")
             return None
-        
+    
 class ParameterSaver:
-    @staticmethod
-    def F_connectPostDB():
-        host = '127.0.0.1'
-        port = '5432'
-        user = 'postgres'
-        password = '1234'
-        database = 'kwater1'
-
-        try:
-            # PostgreSQL 연결
-            connection = psycopg2.connect(
-                host=host,
-                port=port,
-                user=user,
-                password=password,
-                database=database
-            )
-
-            cursor = connection.cursor()
-            print("PostgreSQL 데이터베이스 연결 성공!")
-
-            return connection, cursor
-
-        except psycopg2.Error as error:
-            print("PostgreSQL 오류: ", error)
-            return None, None
-
-    @staticmethod
-    def F_ConnectionClose(cursor, connection):
-        cursor.close()
-        connection.close()
-        print("데이터 베이스 연결 해제")
-
+    db_connection = None
+    db_cursor = None
+    
     def __init__(self, id, url):
         self.id = id
         self.url = url
 
+    @staticmethod
+    def F_connectPostDB():
+        # 이미 연결된 데이터베이스가 있는 경우 해당 연결을 재사용
+        if ParameterSaver.db_connection is None:
+            try:
+                ParameterSaver.db_connection = sqlite3.connect('params_db.sqlite')
+                ParameterSaver.db_cursor = ParameterSaver.db_connection.cursor()
+                print("SQLite 데이터베이스 연결 성공!")
+
+                # URL_TB 테이블 생성
+                ParameterSaver.db_cursor.execute('''
+                CREATE TABLE IF NOT EXISTS URL_TB (
+                    id TEXT PRIMARY KEY,
+                    url TEXT NOT NULL
+                )''')
+
+                # PARAMS_TB 테이블 생성
+                ParameterSaver.db_cursor.execute('''
+                CREATE TABLE IF NOT EXISTS PARAMS_TB (
+                    id TEXT,
+                    param TEXT,
+                    FOREIGN KEY (id) REFERENCES URL_TB(id)
+                )''')
+
+                ParameterSaver.db_connection.commit()
+
+            except sqlite3.Error as error:
+                print("SQLite 연결 오류: ", error)
+                return None
+
+        return ParameterSaver.db_connection, ParameterSaver.db_cursor
+
+    @staticmethod
+    def F_ConnectionClose():
+        # 연결이 존재하는 경우에만 닫기
+        if ParameterSaver.db_connection:
+            ParameterSaver.db_cursor.close()
+            ParameterSaver.db_connection.close()
+            print("데이터베이스 연결 해제")
+            ParameterSaver.db_connection = None
+            ParameterSaver.db_cursor = None
+
     def save_parameters(self):
-        connection, cursor = self.F_connectPostDB()  
-        if not connection or not cursor:
+        # 데이터베이스 연결
+        self.F_connectPostDB()
+        if ParameterSaver.db_connection is None or ParameterSaver.db_cursor is None:
             return
 
         try:
             # 중복된 ID인지 확인
-            cursor.execute("SELECT COUNT(*) FROM URL_TB WHERE id = %s", (self.id,))
-            count = cursor.fetchone()[0]
+            ParameterSaver.db_cursor.execute("SELECT COUNT(*) FROM URL_TB WHERE id = ?", (self.id,))
+            count = ParameterSaver.db_cursor.fetchone()[0]
             if count > 0:
                 QMessageBox.warning(None, '중복된 값', '중복된 ID 값입니다.')
                 return
 
-            cursor.execute("INSERT INTO URL_TB (id, url) VALUES (%s, %s)", (self.id, self.url))
-            connection.commit()
-            QMessageBox.information(None, '성공', 'URL이 성공적으로 저장되었습니다.')
-        except psycopg2.Error as e:
+            # URL_TB에 데이터 삽입
+            ParameterSaver.db_cursor.execute("INSERT INTO URL_TB (id, url) VALUES (?, ?)", (self.id, self.url))
+            ParameterSaver.db_connection.commit()
+
+            # URL에서 파라미터 분리 및 PARAMS_TB에 삽입
+            parsed_url = urlparse(self.url)
+            api_url = parsed_url.scheme + "://" + parsed_url.netloc + parsed_url.path
+            ParameterSaver.db_cursor.execute("INSERT INTO PARAMS_TB (id, param) VALUES (?, ?)", (self.id, api_url))
+            query_params = parse_qs(parsed_url.query)
+            for param, values in query_params.items():
+                for value in values:
+                    ParameterSaver.db_cursor.execute("INSERT INTO PARAMS_TB (id, param) VALUES (?, ?)", (self.id, f"{param}={value}"))
+            ParameterSaver.db_connection.commit()
+
+            QMessageBox.information(None, '성공', 'URL 및 파라미터가 성공적으로 저장되었습니다.')
+        except sqlite3.Error as e:
             print(f"에러 발생: {e}")
             QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
         finally:
-            if connection:
-                self.F_ConnectionClose(cursor, connection)
+            self.F_ConnectionClose()
 
-# class DataParser: ## 이게 사실 fetch 함수랑 같은 기능이었음!! 필요없을 듯 대신 참고해서 수정하기~~
-#     @staticmethod
-#     def parse_xml(api_data): # 데이터 프레임으로 바꿔주는 것
-#         try:
-#             root = ET.fromstring(api_data)
-#             # DataFrame을 만들기 위한 빈 리스트 생성
-#             data_list = []
-
-#             # items 요소가 있는지 확인
-#             items_element = root.find(".//items")
-#             if items_element:
-#                 # items 내부의 item 데이터 추출
-#                 for item in root.findall('.//item'):
-#                     item_data = {}
-#                     for child in item:
-#                         item_data[child.tag] = child.text
-#                     data_list.append(item_data)
-#             else:
-#                 pass
-#                 # items 요소가 없는 경우
-#                 # sub_data = []
-#                 # result_code = root.find(".//resultCode")
-#                 # if result_code is not None:
-#                 #     columns.append("resultCode")
-#                 #     sub_data.append(result_code.text)
-
-#                 # result_msg = root.find(".//resultMsg")
-#                 # if result_msg is not None:
-#                 #     columns.append("resultMsg")
-#                 #     sub_data.append(result_msg.text)
-#                 # data.append(sub_data)
-#             return pd.DataFrame(data_list)
-#         except ET.ParseError as e:
-#             print("XML 파싱 오류:", e)
-#             return None  # XML 파싱 오류인 경우 None을 반환
-        
 class PreviewUpdater:
     @staticmethod
     def show_preview(preview_table, data):
@@ -198,7 +187,7 @@ class ParameterViewer(QWidget):
             QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
 
         finally:
-            ParameterSaver.F_ConnectionClose(cursor, connection)
+            ParameterSaver.F_ConnectionClose()
 
     def on_confirm_button_clicked(self):
         selected_items = self.param_table.selectedItems()
@@ -214,37 +203,42 @@ class ParameterViewer(QWidget):
                     id = id_item.text()
 
                     try:
-                        # 해당 ID 값을 가진 행의 파라미터 값 출력을 위해 DB에서 해당 값을 가져옴
                         connection, cursor = ParameterSaver.F_connectPostDB()
-                        cursor.execute("SELECT param FROM PARAMS_TB WHERE id = %s", (id,))
+                        cursor.execute("SELECT param FROM PARAMS_TB WHERE id = ?", (id,))
                         rows = cursor.fetchall()
 
-                        self.my_widget_instance.api_input.setText(rows[0][0].split('=')[0])
-                        self.my_widget_instance.key_input.setText(unquote(rows[2][0].split('=')[1]))
-                        
+                        self.my_widget_instance.api_input.setText(rows[0][0])
+
+                        # serviceKey 파라미터 값 추출 및 설정
+                        service_key_row = next((row for row in rows if row[0].startswith('serviceKey=')), None)
+                        if service_key_row:
+                            service_key = service_key_row[0].split('=', 1)[1]
+                            self.my_widget_instance.key_input.setText(service_key)
+
                         parameters = {}
                         for row in rows[3:]:
-                            parts = row[0].split("=")
-                            parameters[parts[0]] = parts[1]
-                        self.my_widget_instance.auto_add_parameters(parameters)
+                            key, value = row[0].split("=", 1)
+                            parameters[key] = value
 
-                    except psycopg2.Error as e:
+                        # 파라미터 추가 처리
+                        if isinstance(self.my_widget_instance, MyWidget):
+                            self.my_widget_instance.auto_add_parameters(parameters)
+
+                    except sqlite3.Error as e:
                         print(f"에러 발생: {e}")
                     finally:
-                        ParameterSaver.F_ConnectionClose(cursor, connection)
+                        ParameterSaver.F_ConnectionClose()
 
-                    self.my_widget_instance.origin_data = requests.get(url)
-                    self.my_widget_instance.df_data = fetch_data(self.my_widget_instance.origin_data.url)
-                    data = self.my_widget_instance.df_data
-                    PreviewUpdater.show_preview(self.my_widget_instance.preview_table, data)
+                    # self.my_widget_instance.origin_data = requests.get(url)
+                    # self.my_widget_instance.df_data = fetch_data(self.my_widget_instance.origin_data.url)
+                    # data = self.my_widget_instance.df_data
+                    # PreviewUpdater.show_preview(self.my_widget_instance.preview_table, data)
                 elif self.parent_widget_type == "DataJoinerApp":
                     if self.target_url_field == "api_url1_edit":
                         self.my_widget_instance.api_url1_edit.setText(url)
                     elif self.target_url_field == "api_url2_edit":
                         self.my_widget_instance.api_url2_edit.setText(url)
                 self.close()
-            else:
-                print("선택된 행의 URL이 없습니다.")
         else:
             print("선택된 행이 없습니다.")
 
@@ -272,11 +266,11 @@ class MyWidget(QWidget):
         self.fixed_layout = QVBoxLayout()
         main_layout.addLayout(self.fixed_layout)
 
-        self.api_label = QLabel('API URL:')
+        self.api_label = QLabel('API URL')
         self.api_input = EnterLineEdit(self)
         self.default_param(self.fixed_layout, self.api_label, self.api_input)
 
-        self.key_label = QLabel('serviceKey:')
+        self.key_label = QLabel('serviceKey')
         self.key_input = EnterLineEdit(self)
         self.default_param(self.fixed_layout, self.key_label, self.key_input)
 
@@ -348,7 +342,7 @@ class MyWidget(QWidget):
     def add_parameter(self):
         param_name, ok = QInputDialog.getText(self, '파라미터 추가', '파라미터명:')
         if ok and param_name:
-            param_label = QLabel(f'{param_name}')
+            param_label = QLabel(param_name.replace(" ", ""))
             param_label.setMinimumWidth(100)  # 라벨의 최소 너비 설정
             param_label.setMaximumWidth(100)
             param_input = EnterLineEdit(self)
@@ -418,22 +412,26 @@ class MyWidget(QWidget):
         url = self.api_input.text()
         service_key = self.key_input.text()
 
-        if not service_key:
+        if not url:
+            QMessageBox.critical(None, '에러', "URL을 입력하세요.")
+            return None
+        elif not service_key:
             QMessageBox.critical(None, '에러', '서비스 키를 입력하세요.')
-            return
+            return None
+        
+        try:
+            # ApiCall 객체 생성
+            api_caller = ApiCall(key=service_key, url=url)
 
-        # ApiCall 객체 생성
-        api_caller = ApiCall(key=service_key, url=url) 
+            # 파라미터 설정
+            params = self.get_parameters()
 
-        # 파라미터 설정
-        params = self.get_parameters()
-
-        # API 호출
-        self.origin_data = api_caller.call(serviceKey=service_key, **params)
-        self.df_data = fetch_data(self.origin_data.url)
-        if not self.df_data.empty:
-            PreviewUpdater.show_preview(self.preview_table, self.df_data)
-        else:
+            # API 호출 (비동기 처리를 고려하지 않은 동기 방식의 예제)
+            self.origin_data = api_caller.call(serviceKey=service_key, **params)
+            self.df_data = fetch_data(self.origin_data.url)
+            if not self.df_data.empty:
+                PreviewUpdater.show_preview(self.preview_table, self.df_data)
+        except:
             print('호출 실패')
 
     def download_parameters(self):
