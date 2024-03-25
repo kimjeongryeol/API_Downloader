@@ -356,6 +356,9 @@ class MyWidget(QWidget):
                 QMessageBox.warning(self, '중복된 파라미터명', '이미 존재하는 파라미터명입니다.')
                 return
             display_name = (param_name[:12] + '...') if len(param_name) > 12 else param_name
+            # 문제 1. 숫자는 ...이 안생김 흠.. 근데 파라미터명이 숫자인 경우는 없으니까 괜찮은가..?
+            # 문제 2. param_labels에 QLabel(display_name)이 append 돼서 중복 검사할 때 param_labels에 있는 거랑 비교를 하기 때문에
+            # 글자가 12자 이상인경우에는 중복 검사가 안됨... ? 아무튼 문제가 있음.. 
 
             param_label = QLabel(display_name)
             param_input = EnterLineEdit(self)
