@@ -655,9 +655,18 @@ class DataJoinerApp(QWidget):
         join_column1 = self.join_column1_edit.text()
         join_column2 = self.join_column2_edit.text()
 
-        if not api_url_1 or not api_url_2 or not join_column1 or not join_column2:
-            QMessageBox.warning(self, '경고', 'API URL과 조인할 컬럼 이름을 입력해야 합니다!')
-            return
+        fields = {
+        self.api_url1_edit: 'API URL',
+        self.api_url2_edit: 'API URL',
+        self.join_column1_edit: '조인할 컬럼 이름',
+        self.join_column2_edit: '조인할 컬럼 이름'
+        }
+
+        for field, name in fields.items():
+            if not field.text():
+                QMessageBox.warning(self, '경고', f'{name}을(를) 입력해야 합니다!')
+                field.setFocus()
+                return
         
         df1 = fetch_data(api_url_1)
         df2 = fetch_data(api_url_2)
