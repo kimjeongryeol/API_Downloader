@@ -727,10 +727,10 @@ class MainApp(QWidget):
         # 버튼 두 개가 있는 수평 레이아웃 생성
         hbox = QVBoxLayout()
 
-        btn1 = QPushButton('API 조회', self)
+        btn1 = QPushButton('API 호출', self)
         btn1.clicked.connect(self.showMyWidgetApp)  # 버튼 1 클릭 시 showMyWidgetApp 메서드 호출
         
-        btn2 = QPushButton('조인', self)
+        btn2 = QPushButton('API && API 병합', self)
         btn2.clicked.connect(self.showDataJoinerApp)  # 버튼 2 클릭 시 showDataJoinerApp 메서드 호출
         
         hbox.addWidget(btn1)
