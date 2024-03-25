@@ -161,6 +161,8 @@ class ParameterViewer(QWidget):
         self.setLayout(layout)
         self.resize(800, 600)  # 창의 크기를 너비 800px, 높이 600px로 설정
         
+        self.param_table.itemDoubleClicked.connect(self.on_table_item_double_clicked)
+
     def load_parameter_list(self):
         connection, cursor = ParameterSaver.F_connectPostDB()
         if not connection or not cursor:
@@ -194,7 +196,7 @@ class ParameterViewer(QWidget):
         finally:
             ParameterSaver.F_ConnectionClose()
 
-    def on_table_item_double_clicked(self, item):
+    def on_table_item_double_clicked(self):
         # 더블클릭 이벤트를 처리하기 위해 on_confirm_button_clicked 메서드 호출
         self.on_confirm_button_clicked()
 
@@ -330,8 +332,8 @@ class MyWidget(QWidget):
 
     def default_param(self, layout, label_widget, edit_widget):
         h_layout = QHBoxLayout()
-        label_widget.setMinimumWidth(200)  # 라벨의 최소 너비 설정
-        label_widget.setMaximumWidth(200)
+        label_widget.setMinimumWidth(130)  # 라벨의 최소 너비 설정
+        label_widget.setMaximumWidth(130)
         h_layout.addWidget(label_widget)
         h_layout.addWidget(edit_widget)
         h_layout.setSpacing(10)  # 라벨과 입력칸 사이의 간격 설정
@@ -350,25 +352,27 @@ class MyWidget(QWidget):
             self.param_grid_row += 1
 
     def add_parameter(self):
-        param_name, ok = QInputDialog.getText(self, '파라미터 추가', '파라미터명:')
-        if ok and param_name:
+        param, ok = QInputDialog.getText(self, '파라미터 추가', '파라미터명:')
+        if ok and param:
+            param_name = param.replace(" ", "")
             # 파라미터 이름이 12자를 초과할 경우, 12자까지만 표시하고 뒤에 '...' 추가
             display_name = (param_name[:12] + '...') if len(param_name) > 12 else param_name
 
+            if display_name in self.param_labels:
+                QMessageBox.warning(self, '중복된 파라미터명', '이미 존재하는 파라미터명입니다.')
+                return
             param_label = QLabel(display_name)
-            param_label.setMinimumWidth(200)  # 라벨의 최소 너비 설정
-            param_label.setMaximumWidth(200)
+            param_label.setMinimumWidth(130)  # 라벨의 최소 너비 설정
+            param_label.setMaximumWidth(130)
             param_input = EnterLineEdit(self)
-            param_input.setMaximumWidth(400)
-            param_input.setMinimumWidth(400)
+            param_input.setMaximumWidth(200)
+            param_input.setMinimumWidth(200)
 
-            # 원본 파라미터 이름을 저장하기 위한 숨겨진 라벨 또는 다른 메커니즘 사용을 고려할 수 있음
             param_label.setToolTip(param_name)  # 툴팁에 전체 이름을 표시
 
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
             self.add_param_to_grid(param_label, param_input)
-
             param_input.setFocus()
             
     def auto_add_parameters(self, parameters):
@@ -388,11 +392,11 @@ class MyWidget(QWidget):
         # 새로운 파라미터들 추가
         for key, value in parameters.items():
             param_label = QLabel(key)
-            param_label.setMinimumWidth(200)
-            param_label.setMaximumWidth(200)
+            param_label.setMinimumWidth(130)
+            param_label.setMaximumWidth(130)
             param_input = EnterLineEdit(self)
-            param_input.setMaximumWidth(400)
-            param_input.setMinimumWidth(400)
+            param_input.setMaximumWidth(200)
+            param_input.setMinimumWidth(200)
             param_input.setText(value)
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
@@ -454,7 +458,7 @@ class MyWidget(QWidget):
     def download_parameters(self):
 
         if self.origin_data:
-            id, ok = QInputDialog.getText(self, '저장명 입력', '저장할 ID를 입력하세요:')
+            id, ok = QInputDialog.getText(self, '저장명 입력', '저장명을 입력하세요:')
             if ok:
                 parameter_saver = ParameterSaver(id, self.origin_data.url)
                 parameter_saver.save_parameters()
