@@ -342,8 +342,8 @@ class MyWidget(QWidget):
             label_widget.setMaximumWidth(100)
         h_layout.addWidget(label_widget)
         h_layout.addWidget(edit_widget)
-        h_layout.setSpacing(10)
-        h_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        #h_layout.setSpacing(10)
+        #h_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
         if isinstance(layout, QGridLayout):
             self.param_grid_layout.addLayout(h_layout, self.param_grid_row, self.param_grid_col)
