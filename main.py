@@ -257,6 +257,7 @@ class MyWidget(QWidget):
         self.param_labels = []  # 파라미터 라벨 리스트
         self.param_inputs = []  # 파라미터 입력 필드 리스트
         self.param_names = []
+        self.selected_params = []
         self.param_grid_row = 0  # 현재 그리드 레이아웃의 행 위치
         self.param_grid_col = 0  # 변경: 첫 번째 파라미터부터 첫 번째 열에 배치
         self.max_cols = 3  # 한 행에 최대 파라미터 개수
@@ -336,10 +337,12 @@ class MyWidget(QWidget):
         h_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # 왼쪽 정렬 및 수직 가운데 정렬
         layout.addLayout(h_layout)
 
-    def add_param_to_grid(self, label_widget, edit_widget):
+    def add_param_to_grid(self, label_widget, edit_widget, checkbox_widget):
         layout = QHBoxLayout()
         label_widget.setMinimumWidth(130)  # 라벨의 최소 너비 설정
         label_widget.setMaximumWidth(130)
+        checkbox_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        layout.addWidget(checkbox_widget)  # 체크박스를 레이아웃에 추가
         layout.addWidget(label_widget)
         layout.addWidget(edit_widget)
         self.param_grid_layout.addLayout(layout, self.param_grid_row, self.param_grid_col)
@@ -368,10 +371,14 @@ class MyWidget(QWidget):
 
             param_label.setToolTip(param_name)  # 툴팁에 전체 이름을 표시
 
+            param_checkbox = QCheckBox()  # 체크박스 생성
+
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
             self.param_names.append(param_name)  # 파라미터명만 추가
-            self.add_param_to_grid(param_label, param_input)
+            
+            self.selected_params.append(param_checkbox)  # 선택된 파라미터 리스트에 체크박스 추가
+            self.add_param_to_grid(param_label, param_input, param_checkbox)
             param_input.setFocus()
             
     def auto_add_parameters(self, parameters):
@@ -402,22 +409,27 @@ class MyWidget(QWidget):
             self.add_param_to_grid(param_label, param_input)
 
     def remove_parameter(self):
-        if self.param_labels:
-            param_label = self.param_labels.pop()
-            param_input = self.param_inputs.pop()
-            self.param_names.pop()
-            param_label.deleteLater()
-            param_input.deleteLater()
-            v_layout = self.layout()
-            v_layout.removeWidget(param_label)
-            v_layout.removeWidget(param_input)
-            param_label.setParent(None)
-            param_input.setParent(None)
+        # 선택된 파라미터들을 삭제
+        for i, checkbox in reversed(list(enumerate(self.selected_params))):
+            if checkbox.isChecked():
+                param_label = self.param_labels.pop(i)
+                param_input = self.param_inputs.pop(i)
+                param_label.deleteLater()
+                param_input.deleteLater()
+                param_checkbox = self.selected_params.pop(i)
+                param_checkbox.deleteLater()
+                v_layout = self.layout()
+                v_layout.removeWidget(param_label)
+                v_layout.removeWidget(param_input)
+                v_layout.removeWidget(param_checkbox)
+                param_label.setParent(None)
+                param_input.setParent(None)
+                param_checkbox.setParent(None)
 
-            self.param_grid_col -= 1
-            if self.param_grid_col < 0:
-                self.param_grid_col = self.max_cols - 1
-                self.param_grid_row -= 1
+                self.param_grid_col -= 1
+                if self.param_grid_col < 0:
+                    self.param_grid_col = self.max_cols - 1
+                    self.param_grid_row -= 1
 
     def get_parameters(self):
         # 입력된 파라미터 수집
