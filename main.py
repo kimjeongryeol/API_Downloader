@@ -256,6 +256,7 @@ class MyWidget(QWidget):
         self.origin_data = None
         self.param_labels = []  # 파라미터 라벨 리스트
         self.param_inputs = []  # 파라미터 입력 필드 리스트
+        self.param_names = []
         self.param_grid_row = 0  # 현재 그리드 레이아웃의 행 위치
         self.param_grid_col = 0  # 변경: 첫 번째 파라미터부터 첫 번째 열에 배치
         self.max_cols = 3  # 한 행에 최대 파라미터 개수
@@ -352,13 +353,13 @@ class MyWidget(QWidget):
         param, ok = QInputDialog.getText(self, '파라미터 추가', '파라미터명:')
         if ok and param:
             param_name = param.replace(" ", "")
-            if param_name in [p.text() for p in self.param_labels]:
+            
+            # 중복된 파라미터명인지 확인
+            if param_name in self.param_names:
                 QMessageBox.warning(self, '중복된 파라미터명', '이미 존재하는 파라미터명입니다.')
                 return
+            
             display_name = (param_name[:12] + '...') if len(param_name) > 12 else param_name
-            # 문제 1. 숫자는 ...이 안생김 흠.. 근데 파라미터명이 숫자인 경우는 없으니까 괜찮은가..?
-            # 문제 2. param_labels에 QLabel(display_name)이 append 돼서 중복 검사할 때 param_labels에 있는 거랑 비교를 하기 때문에
-            # 글자가 12자 이상인경우에는 중복 검사가 안됨... ? 아무튼 문제가 있음.. 
 
             param_label = QLabel(display_name)
             param_input = EnterLineEdit(self)
@@ -369,6 +370,7 @@ class MyWidget(QWidget):
 
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
+            self.param_names.append(param_name)  # 파라미터명만 추가
             self.add_param_to_grid(param_label, param_input)
             param_input.setFocus()
             
@@ -403,6 +405,7 @@ class MyWidget(QWidget):
         if self.param_labels:
             param_label = self.param_labels.pop()
             param_input = self.param_inputs.pop()
+            self.param_names.pop()
             param_label.deleteLater()
             param_input.deleteLater()
             v_layout = self.layout()
