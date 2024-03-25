@@ -190,7 +190,7 @@ class ParameterViewer(QWidget):
 
             self.param_table.resizeColumnsToContents()
 
-        except psycopg2.Error as e:
+        except sqlite3.Error as e:
             QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
 
         finally:
@@ -404,9 +404,13 @@ class MyWidget(QWidget):
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
             param_input.setText(value)
+            param_checkbox = QCheckBox()  # 체크박스 생성
+            self.selected_params.append(param_checkbox)
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
-            self.add_param_to_grid(param_label, param_input)
+            self.param_names.append(key)
+            self.add_param_to_grid(param_label, param_input, param_checkbox)
+        print(self.param_names)
 
     def remove_parameter(self):
         # 선택된 파라미터들을 삭제
