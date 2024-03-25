@@ -337,6 +337,8 @@ class MyWidget(QWidget):
 
     def add_param_to_grid(self, label_widget, edit_widget):
         layout = QHBoxLayout()
+        label_widget.setMinimumWidth(130)  # 라벨의 최소 너비 설정
+        label_widget.setMaximumWidth(130)
         layout.addWidget(label_widget)
         layout.addWidget(edit_widget)
         self.param_grid_layout.addLayout(layout, self.param_grid_row, self.param_grid_col)
@@ -357,8 +359,6 @@ class MyWidget(QWidget):
                 QMessageBox.warning(self, '중복된 파라미터명', '이미 존재하는 파라미터명입니다.')
                 return
             param_label = QLabel(display_name)
-            param_label.setMinimumWidth(130)  # 라벨의 최소 너비 설정
-            param_label.setMaximumWidth(130)
             param_input = EnterLineEdit(self)
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
