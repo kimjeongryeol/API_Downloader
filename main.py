@@ -280,11 +280,11 @@ class MyWidget(QWidget):
 
         self.api_label = QLabel('API URL')
         self.api_input = EnterLineEdit(self)
-        self.default_param(self.fixed_layout, self.api_label, self.api_input)
+        self.add_param_to_layout(self.fixed_layout, self.api_label, self.api_input)
 
         self.key_label = QLabel('serviceKey')
         self.key_input = EnterLineEdit(self)
-        self.default_param(self.fixed_layout, self.key_label, self.key_input)
+        self.add_param_to_layout(self.fixed_layout, self.key_label, self.key_input)
 
         self.param_grid_layout = QGridLayout()
         main_layout.addLayout(self.param_grid_layout)
@@ -330,38 +330,37 @@ class MyWidget(QWidget):
 
         self.setLayout(main_layout)
 
-    def default_param(self, layout, label_widget, edit_widget):
+    def add_param_to_layout(self, layout, label_widget, edit_widget, checkbox_widget=None):
         h_layout = QHBoxLayout()
-        label_widget.setMinimumWidth(130)  # 라벨의 최소 너비 설정
-        label_widget.setMaximumWidth(130)
+        if checkbox_widget:
+            checkbox_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            h_layout.addWidget(checkbox_widget)
+            label_widget.setMinimumWidth(130)
+            label_widget.setMaximumWidth(130)
+        else:
+            label_widget.setMinimumWidth(100)
+            label_widget.setMaximumWidth(100)
         h_layout.addWidget(label_widget)
         h_layout.addWidget(edit_widget)
-        h_layout.setSpacing(10)  # 라벨과 입력칸 사이의 간격 설정
-        h_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # 왼쪽 정렬 및 수직 가운데 정렬
-        layout.addLayout(h_layout)
+        h_layout.setSpacing(10)
+        h_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-    def add_param_to_grid(self, label_widget, edit_widget, checkbox_widget):
-        layout = QHBoxLayout()
-        label_widget.setMinimumWidth(130)  # 라벨의 최소 너비 설정
-        label_widget.setMaximumWidth(130)
-        checkbox_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        layout.addWidget(checkbox_widget)  # 체크박스를 레이아웃에 추가
-        layout.addWidget(label_widget)
-        layout.addWidget(edit_widget)
-        self.param_grid_layout.addLayout(layout, self.param_grid_row, self.param_grid_col)
+        if isinstance(layout, QGridLayout):
+            self.param_grid_layout.addLayout(h_layout, self.param_grid_row, self.param_grid_col)
 
-        self.param_grid_col += 1
-        if self.param_grid_col >= self.max_cols:
-            self.param_grid_col = 0
-            self.param_grid_row += 1
+            self.param_grid_col += 1
+            if self.param_grid_col >= self.max_cols:
+                self.param_grid_col = 0
+                self.param_grid_row += 1
+        else:
+            self.fixed_layout.addLayout(h_layout)
 
     def add_parameter(self):
         param, ok = QInputDialog.getText(self, '파라미터 추가', '파라미터명:')
         if ok and param:
             param_name = param.replace(" ", "")
             
-            # 중복된 파라미터명인지 확인
-            if param_name in self.param_names:
+            if param_name in set(self.param_names):
                 QMessageBox.warning(self, '중복된 파라미터명', '이미 존재하는 파라미터명입니다.')
                 return
             
@@ -378,16 +377,13 @@ class MyWidget(QWidget):
 
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
-            self.param_names.append(param_name)  # 파라미터명만 추가
-            
-            self.selected_params.append(param_checkbox)  # 선택된 파라미터 리스트에 체크박스 추가
-            self.add_param_to_grid(param_label, param_input, param_checkbox)
+            self.param_names.append(param_name)
+            self.selected_params.append(param_checkbox)
+            self.add_param_to_layout(self.param_grid_layout, param_label, param_input, param_checkbox)
             param_input.setFocus()
-            
+
     def auto_add_parameters(self, parameters):
-        while self.param_labels:
-            param_label = self.param_labels.pop()
-            param_input = self.param_inputs.pop()
+        for param_label, param_input in zip(self.param_labels, self.param_inputs):
             param_label.deleteLater()
             param_input.deleteLater()
             self.param_grid_layout.removeWidget(param_label)
@@ -398,7 +394,6 @@ class MyWidget(QWidget):
         self.param_grid_row = 0
         self.param_grid_col = 0
 
-        # 새로운 파라미터들 추가
         for key, value in parameters.items():
             param_label = QLabel(key)
             param_label.setMinimumWidth(130)
@@ -407,12 +402,12 @@ class MyWidget(QWidget):
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
             param_input.setText(value)
-            param_checkbox = QCheckBox()  # 체크박스 생성
+            param_checkbox = QCheckBox()
             self.selected_params.append(param_checkbox)
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
             self.param_names.append(key)
-            self.add_param_to_grid(param_label, param_input, param_checkbox)
+            self.add_param_to_layout(self.param_grid_layout, param_label, param_input, param_checkbox)
         print(self.param_names)
 
     def remove_parameter(self):
