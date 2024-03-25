@@ -431,6 +431,16 @@ class MyWidget(QWidget):
                     self.param_grid_col = self.max_cols - 1
                     self.param_grid_row -= 1
 
+        # 레이아웃 재배치 수정 필요 ㅜㅜ
+        for row in range(self.param_grid_layout.rowCount()):
+            for col in range(self.max_cols):
+                item = self.param_grid_layout.itemAtPosition(row, col)
+                if item:
+                    widget = item.widget()
+                    if widget:
+                        self.param_grid_layout.removeWidget(widget)
+                        self.param_grid_layout.addWidget(widget, row, col)
+
     def get_parameters(self):
         # 입력된 파라미터 수집
         params = {}
