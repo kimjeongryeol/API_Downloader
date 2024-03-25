@@ -458,7 +458,7 @@ class MyWidget(QWidget):
     def download_parameters(self):
 
         if self.origin_data:
-            id, ok = QInputDialog.getText(self, '저장명 입력', '저장명을 입력하세요:')
+            id, ok = QInputDialog.getText(self, '저장명 입력', '저장명를 입력하세요')
             if ok:
                 parameter_saver = ParameterSaver(id, self.origin_data.url)
                 parameter_saver.save_parameters()
