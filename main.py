@@ -220,13 +220,7 @@ class ParameterViewer(QWidget):
                         rows = cursor.fetchall()
 
                         self.my_widget_instance.api_input.setText(rows[0][0])
-
-                        # serviceKey 파라미터 값 추출 및 설정
-                        # service_key_row = next((row for row in rows if row[0].startswith('serviceKey=')), None)
-                        # if service_key_row:
-                        #     service_key = service_key_row[0].split('=', 1)[1]
-                        #     self.my_widget_instance.key_input.setText(service_key)
-
+                        
                         parameters = {}
                         for row in rows[2:]:
                             key, value = row[0].split("=", 1)
