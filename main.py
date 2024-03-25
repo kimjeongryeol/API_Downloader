@@ -116,6 +116,39 @@ class ParameterSaver:
         finally:
             self.F_ConnectionClose()
 
+    def load_parameter_list(param_table):
+        connection, cursor = ParameterSaver.F_connectPostDB()
+        if not connection or not cursor:
+            return
+
+        try:
+            cursor.execute("SELECT * FROM URL_TB")
+            rows = cursor.fetchall()
+            num_rows = len(rows)
+            num_cols = len(rows[0]) if num_rows > 0 else 0
+
+            # 행과 열 수 설정
+            param_table.setRowCount(num_rows)
+            param_table.setColumnCount(num_cols)
+
+            # 헤더 설정
+            header_labels = ["ID", "URL"] 
+            param_table.setHorizontalHeaderLabels(header_labels)
+
+            # 데이터 추가
+            for row_idx, row in enumerate(rows):
+                for col_idx, col_value in enumerate(row):
+                    item = QTableWidgetItem(str(col_value))
+                    param_table.setItem(row_idx, col_idx, item)
+
+            param_table.resizeColumnsToContents()
+
+        except sqlite3.Error as e:
+            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+
+        finally:
+            ParameterSaver.F_ConnectionClose()
+
 class PreviewUpdater:
     @staticmethod
     def show_preview(preview_table, data):
@@ -151,7 +184,7 @@ class ParameterViewer(QWidget):
         self.param_table.setSelectionMode(QAbstractItemView.SingleSelection)  # 한 번에 하나의 항목만 선택
         self.param_table.setSelectionBehavior(QAbstractItemView.SelectRows)  # 행 단위로 선택
 
-        self.load_parameter_list()
+        self.load_parameters()
         layout.addWidget(self.param_table)
 
         confirm_button = QPushButton('확인')
@@ -163,38 +196,8 @@ class ParameterViewer(QWidget):
         
         self.param_table.itemDoubleClicked.connect(self.on_table_item_double_clicked)
 
-    def load_parameter_list(self):
-        connection, cursor = ParameterSaver.F_connectPostDB()
-        if not connection or not cursor:
-            return
-
-        try:
-            cursor.execute("SELECT * FROM URL_TB")
-            rows = cursor.fetchall()
-            num_rows = len(rows)
-            num_cols = len(rows[0]) if num_rows > 0 else 0
-
-            # 행과 열 수 설정
-            self.param_table.setRowCount(num_rows)
-            self.param_table.setColumnCount(num_cols)
-
-            # 헤더 설정
-            header_labels = ["ID", "URL"] 
-            self.param_table.setHorizontalHeaderLabels(header_labels)
-
-            # 데이터 추가
-            for row_idx, row in enumerate(rows):
-                for col_idx, col_value in enumerate(row):
-                    item = QTableWidgetItem(str(col_value))
-                    self.param_table.setItem(row_idx, col_idx, item)
-
-            self.param_table.resizeColumnsToContents()
-
-        except sqlite3.Error as e:
-            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
-
-        finally:
-            ParameterSaver.F_ConnectionClose()
+    def load_parameters(self):
+         ParameterSaver.load_parameter_list(self.param_table)
 
     def on_table_item_double_clicked(self):
         # 더블클릭 이벤트를 처리하기 위해 on_confirm_button_clicked 메서드 호출
