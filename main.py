@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, 
-    QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView
+    QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QCheckBox, QSizePolicy
     )
 
 class ApiCall:
@@ -352,12 +352,11 @@ class MyWidget(QWidget):
         param, ok = QInputDialog.getText(self, '파라미터 추가', '파라미터명:')
         if ok and param:
             param_name = param.replace(" ", "")
-            # 파라미터 이름이 12자를 초과할 경우, 12자까지만 표시하고 뒤에 '...' 추가
-            display_name = (param_name[:12] + '...') if len(param_name) > 12 else param_name
-
-            if display_name in self.param_labels:
+            if param_name in [p.text() for p in self.param_labels]:
                 QMessageBox.warning(self, '중복된 파라미터명', '이미 존재하는 파라미터명입니다.')
                 return
+            display_name = (param_name[:12] + '...') if len(param_name) > 12 else param_name
+
             param_label = QLabel(display_name)
             param_input = EnterLineEdit(self)
             param_input.setMaximumWidth(200)
