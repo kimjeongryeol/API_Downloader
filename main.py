@@ -3,7 +3,6 @@ import sqlite3
 import sys
 import xml.etree.ElementTree as ET
 import pandas as pd
-import psycopg2
 import requests
 from urllib.parse import parse_qs, urlparse
 from PyQt5.QtCore import Qt
@@ -624,9 +623,13 @@ class DataJoinerApp(QWidget):
         layout.addWidget(self.api_url2_edit)
         layout.addWidget(self.select_button2)  # 올바른 버튼 변수명 사용
 
-        self.join_column_edit = QLineEdit(self)
-        layout.addWidget(QLabel('조인할 컬럼 이름:'))
-        layout.addWidget(self.join_column_edit)
+        self.join_column1_edit = QLineEdit(self)
+        layout.addWidget(QLabel('조인할 컬럼1 이름:'))
+        layout.addWidget(self.join_column1_edit)
+
+        self.join_column2_edit = QLineEdit(self)
+        layout.addWidget(QLabel('조인할 컬럼2 이름:'))
+        layout.addWidget(self.join_column2_edit)
 
         self.join_button = QPushButton('데이터 조인', self)
         self.join_button.clicked.connect(self.join_data)
@@ -649,9 +652,10 @@ class DataJoinerApp(QWidget):
     def join_data(self):
         api_url_1 = self.api_url1_edit.text()
         api_url_2 = self.api_url2_edit.text()
-        join_column = self.join_column_edit.text()
+        join_column1 = self.join_column1_edit.text()
+        join_column2 = self.join_column2_edit.text()
 
-        if not api_url_1 or not api_url_2 or not join_column:
+        if not api_url_1 or not api_url_2 or not join_column1 or not join_column2:
             QMessageBox.warning(self, '경고', 'API URL과 조인할 컬럼 이름을 입력해야 합니다!')
             return
         
@@ -662,14 +666,14 @@ class DataJoinerApp(QWidget):
             QMessageBox.critical(self, '오류', '데이터를 가져오는 데 실패했습니다. API URL을 확인해주세요.')
             return
 
-        if join_column in df1.columns and join_column in df2.columns:
-            self.joined_data = pd.merge(df1, df2, on=join_column, how='inner')
+        if join_column1 in df1.columns and join_column2 in df2.columns:
+            self.joined_data = pd.merge(df1, df2, left_on=join_column1, right_on=join_column2, how='inner')
             self.show_data_in_table(self.joined_data)
         else:
             QMessageBox.warning(self, '오류', '조인할 컬럼이 누락되었거나 잘못되었습니다.')
             self.result_table.clear()  # 테이블 초기화
             self.result_table.setRowCount(0)
-            self.result_table.setColumnCount(0)        
+            self.result_table.setColumnCount(0)
 
     def show_data_in_table(self, data):
         self.result_table.setRowCount(data.shape[0])
