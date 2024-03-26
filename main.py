@@ -415,6 +415,7 @@ class MyWidget(QWidget):
             if checkbox.isChecked():
                 param_label = self.param_labels.pop(i)
                 param_input = self.param_inputs.pop(i)
+                param_name = self.param_names.pop(i)
                 param_label.deleteLater()
                 param_input.deleteLater()
                 param_checkbox = self.selected_params.pop(i)
