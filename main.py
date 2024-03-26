@@ -212,6 +212,10 @@ class ParameterViewer(QWidget):
                 url = url_item.text()
 
                 if self.parent_widget_type == "MyWidget":
+                    # Clear the preview table in MyWidget before setting new parameters
+                    self.my_widget_instance.preview_table.clearContents()
+                    self.my_widget_instance.preview_table.setRowCount(0)
+                    self.my_widget_instance.preview_table.setColumnCount(0)
 
                     id_item = self.param_table.item(selected_row, 0)
                     id = id_item.text()
@@ -224,7 +228,7 @@ class ParameterViewer(QWidget):
                         self.my_widget_instance.api_input.setText(rows[0][0])
                         
                         parameters = {}
-                        for row in rows[2:]:
+                        for row in rows[1:]:  # Adjusted to skip the first row which is the API URL
                             key, value = row[0].split("=", 1)
                             if key == 'serviceKey':
                                 self.my_widget_instance.key_input.setText(value)
@@ -234,22 +238,13 @@ class ParameterViewer(QWidget):
                         self.my_widget_instance.auto_add_parameters(parameters)
 
                     except sqlite3.Error as e:
-                        print(f"에러 발생: {e}")
+                        print(f"Error: {e}")
                     finally:
                         ParameterSaver.F_ConnectionClose()
-
-                    # self.my_widget_instance.origin_data = requests.get(url)
-                    # self.my_widget_instance.df_data = fetch_data(self.my_widget_instance.origin_data.url)
-                    # data = self.my_widget_instance.df_data
-                    # PreviewUpdater.show_preview(self.my_widget_instance.preview_table, data)
-                elif self.parent_widget_type == "DataJoinerApp":
-                    if self.target_url_field == "api_url1_edit":
-                        self.my_widget_instance.api_url1_edit.setText(url)
-                    elif self.target_url_field == "api_url2_edit":
-                        self.my_widget_instance.api_url2_edit.setText(url)
+                # Additional logic for other parent_widget_types can be added here
                 self.close()
         else:
-            print("선택된 행이 없습니다.")
+            print("No row selected.")
 
 class MyWidget(QWidget):
     def __init__(self):
@@ -517,7 +512,12 @@ class MyWidget(QWidget):
             return
         
     def show_parameters(self):
-        # 'MyWidget'를 parent_widget_type 인자로 전달
+        # Clear the preview table before showing the parameters
+        self.preview_table.clearContents()
+        self.preview_table.setRowCount(0)
+        self.preview_table.setColumnCount(0)
+        
+        # Instantiate and show the ParameterViewer
         self.parameter_viewer = ParameterViewer(self, "MyWidget")
         self.parameter_viewer.show()
 
