@@ -254,7 +254,7 @@ class ParameterViewer(QWidget):
 class MyWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.df_data = pd.DataFrame() # 데이터 프레임?!
+        self.df_data = pd.DataFrame() # 데이터 프레임?!!?!
         self.origin_data = None
         self.param_labels = []  # 파라미터 라벨 리스트
         self.param_inputs = []  # 파라미터 입력 필드 리스트
