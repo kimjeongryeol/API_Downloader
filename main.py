@@ -212,7 +212,7 @@ class ParameterViewer(QWidget):
                 url = url_item.text()
 
                 if self.parent_widget_type == "MyWidget":
-                    # Clear the preview table in MyWidget before setting new parameters
+                    # Clear the preview table in MyWidget before setting new parameters?!
                     self.my_widget_instance.preview_table.clearContents()
                     self.my_widget_instance.preview_table.setRowCount(0)
                     self.my_widget_instance.preview_table.setColumnCount(0)
