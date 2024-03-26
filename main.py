@@ -212,6 +212,10 @@ class ParameterViewer(QWidget):
                 url = url_item.text()
 
                 if self.parent_widget_type == "MyWidget":
+                    # Clear the preview table in MyWidget before setting new parameters
+                    self.my_widget_instance.preview_table.clearContents()
+                    self.my_widget_instance.preview_table.setRowCount(0)
+                    self.my_widget_instance.preview_table.setColumnCount(0)
 
                     id_item = self.param_table.item(selected_row, 0)
                     id = id_item.text()
@@ -234,14 +238,9 @@ class ParameterViewer(QWidget):
                         self.my_widget_instance.auto_add_parameters(parameters)
 
                     except sqlite3.Error as e:
-                        print(f"에러 발생: {e}")
+                        print(f"Error: {e}")
                     finally:
                         ParameterSaver.F_ConnectionClose()
-
-                    # self.my_widget_instance.origin_data = requests.get(url)
-                    # self.my_widget_instance.df_data = fetch_data(self.my_widget_instance.origin_data.url)
-                    # data = self.my_widget_instance.df_data
-                    # PreviewUpdater.show_preview(self.my_widget_instance.preview_table, data)
                 elif self.parent_widget_type == "DataJoinerApp":
                     if self.target_url_field == "api_url1_edit":
                         self.my_widget_instance.api_url1_edit.setText(url)
@@ -517,7 +516,12 @@ class MyWidget(QWidget):
             return
         
     def show_parameters(self):
-        # 'MyWidget'를 parent_widget_type 인자로 전달
+        # Clear the preview table before showing the parameters
+        self.preview_table.clearContents()
+        self.preview_table.setRowCount(0)
+        self.preview_table.setColumnCount(0)
+        
+        # Instantiate and show the ParameterViewer
         self.parameter_viewer = ParameterViewer(self, "MyWidget")
         self.parameter_viewer.show()
 
