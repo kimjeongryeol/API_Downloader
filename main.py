@@ -3,7 +3,6 @@ import sqlite3
 import sys
 import xml.etree.ElementTree as ET
 import pandas as pd
-import psycopg2
 import requests
 from urllib.parse import parse_qs, urlparse
 from PyQt5.QtCore import Qt
@@ -116,6 +115,39 @@ class ParameterSaver:
         finally:
             self.F_ConnectionClose()
 
+    def load_parameter_list(param_table):
+        connection, cursor = ParameterSaver.F_connectPostDB()
+        if not connection or not cursor:
+            return
+
+        try:
+            cursor.execute("SELECT * FROM URL_TB")
+            rows = cursor.fetchall()
+            num_rows = len(rows)
+            num_cols = len(rows[0]) if num_rows > 0 else 0
+
+            # 행과 열 수 설정
+            param_table.setRowCount(num_rows)
+            param_table.setColumnCount(num_cols)
+
+            # 헤더 설정
+            header_labels = ["ID", "URL"] 
+            param_table.setHorizontalHeaderLabels(header_labels)
+
+            # 데이터 추가
+            for row_idx, row in enumerate(rows):
+                for col_idx, col_value in enumerate(row):
+                    item = QTableWidgetItem(str(col_value))
+                    param_table.setItem(row_idx, col_idx, item)
+
+            param_table.resizeColumnsToContents()
+
+        except sqlite3.Error as e:
+            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+
+        finally:
+            ParameterSaver.F_ConnectionClose()
+
 class PreviewUpdater:
     @staticmethod
     def show_preview(preview_table, data):
@@ -151,7 +183,7 @@ class ParameterViewer(QWidget):
         self.param_table.setSelectionMode(QAbstractItemView.SingleSelection)  # 한 번에 하나의 항목만 선택
         self.param_table.setSelectionBehavior(QAbstractItemView.SelectRows)  # 행 단위로 선택
 
-        self.load_parameter_list()
+        self.load_parameters()
         layout.addWidget(self.param_table)
 
         confirm_button = QPushButton('확인')
@@ -163,38 +195,8 @@ class ParameterViewer(QWidget):
         
         self.param_table.itemDoubleClicked.connect(self.on_table_item_double_clicked)
 
-    def load_parameter_list(self):
-        connection, cursor = ParameterSaver.F_connectPostDB()
-        if not connection or not cursor:
-            return
-
-        try:
-            cursor.execute("SELECT * FROM URL_TB")
-            rows = cursor.fetchall()
-            num_rows = len(rows)
-            num_cols = len(rows[0]) if num_rows > 0 else 0
-
-            # 행과 열 수 설정
-            self.param_table.setRowCount(num_rows)
-            self.param_table.setColumnCount(num_cols)
-
-            # 헤더 설정
-            header_labels = ["ID", "URL"] 
-            self.param_table.setHorizontalHeaderLabels(header_labels)
-
-            # 데이터 추가
-            for row_idx, row in enumerate(rows):
-                for col_idx, col_value in enumerate(row):
-                    item = QTableWidgetItem(str(col_value))
-                    self.param_table.setItem(row_idx, col_idx, item)
-
-            self.param_table.resizeColumnsToContents()
-
-        except psycopg2.Error as e:
-            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
-
-        finally:
-            ParameterSaver.F_ConnectionClose()
+    def load_parameters(self):
+         ParameterSaver.load_parameter_list(self.param_table)
 
     def on_table_item_double_clicked(self):
         # 더블클릭 이벤트를 처리하기 위해 on_confirm_button_clicked 메서드 호출
@@ -256,6 +258,8 @@ class MyWidget(QWidget):
         self.origin_data = None
         self.param_labels = []  # 파라미터 라벨 리스트
         self.param_inputs = []  # 파라미터 입력 필드 리스트
+        self.param_names = []
+        self.selected_params = []
         self.param_grid_row = 0  # 현재 그리드 레이아웃의 행 위치
         self.param_grid_col = 0  # 변경: 첫 번째 파라미터부터 첫 번째 열에 배치
         self.max_cols = 3  # 한 행에 최대 파라미터 개수
@@ -275,11 +279,11 @@ class MyWidget(QWidget):
 
         self.api_label = QLabel('API URL')
         self.api_input = EnterLineEdit(self)
-        self.default_param(self.fixed_layout, self.api_label, self.api_input)
+        self.add_param_to_layout(self.fixed_layout, self.api_label, self.api_input)
 
         self.key_label = QLabel('serviceKey')
         self.key_input = EnterLineEdit(self)
-        self.default_param(self.fixed_layout, self.key_label, self.key_input)
+        self.add_param_to_layout(self.fixed_layout, self.key_label, self.key_input)
 
         self.param_grid_layout = QGridLayout()
         main_layout.addLayout(self.param_grid_layout)
@@ -325,36 +329,40 @@ class MyWidget(QWidget):
 
         self.setLayout(main_layout)
 
-    def default_param(self, layout, label_widget, edit_widget):
+    def add_param_to_layout(self, layout, label_widget, edit_widget, checkbox_widget=None):
         h_layout = QHBoxLayout()
-        label_widget.setMinimumWidth(130)  # 라벨의 최소 너비 설정
-        label_widget.setMaximumWidth(130)
+        if checkbox_widget:
+            checkbox_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            h_layout.addWidget(checkbox_widget)
+            label_widget.setMinimumWidth(130)
+            label_widget.setMaximumWidth(130)
+        else:
+            label_widget.setMinimumWidth(100)
+            label_widget.setMaximumWidth(100)
         h_layout.addWidget(label_widget)
         h_layout.addWidget(edit_widget)
-        h_layout.setSpacing(10)  # 라벨과 입력칸 사이의 간격 설정
-        h_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # 왼쪽 정렬 및 수직 가운데 정렬
-        layout.addLayout(h_layout)
+        #h_layout.setSpacing(10)
+        #h_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-    def add_param_to_grid(self, label_widget, edit_widget):
-        layout = QHBoxLayout()
-        label_widget.setMinimumWidth(130)  # 라벨의 최소 너비 설정
-        label_widget.setMaximumWidth(130)
-        layout.addWidget(label_widget)
-        layout.addWidget(edit_widget)
-        self.param_grid_layout.addLayout(layout, self.param_grid_row, self.param_grid_col)
+        if isinstance(layout, QGridLayout):
+            self.param_grid_layout.addLayout(h_layout, self.param_grid_row, self.param_grid_col)
 
-        self.param_grid_col += 1
-        if self.param_grid_col >= self.max_cols:
-            self.param_grid_col = 0
-            self.param_grid_row += 1
+            self.param_grid_col += 1
+            if self.param_grid_col >= self.max_cols:
+                self.param_grid_col = 0
+                self.param_grid_row += 1
+        else:
+            self.fixed_layout.addLayout(h_layout)
 
     def add_parameter(self):
         param, ok = QInputDialog.getText(self, '파라미터 추가', '파라미터명:')
         if ok and param:
             param_name = param.replace(" ", "")
-            if param_name in [p.text() for p in self.param_labels]:
+            
+            if param_name in set(self.param_names):
                 QMessageBox.warning(self, '중복된 파라미터명', '이미 존재하는 파라미터명입니다.')
                 return
+            
             display_name = (param_name[:12] + '...') if len(param_name) > 12 else param_name
 
             param_label = QLabel(display_name)
@@ -364,15 +372,17 @@ class MyWidget(QWidget):
 
             param_label.setToolTip(param_name)  # 툴팁에 전체 이름을 표시
 
+            param_checkbox = QCheckBox()  # 체크박스 생성
+
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
-            self.add_param_to_grid(param_label, param_input)
+            self.param_names.append(param_name)
+            self.selected_params.append(param_checkbox)
+            self.add_param_to_layout(self.param_grid_layout, param_label, param_input, param_checkbox)
             param_input.setFocus()
-            
+
     def auto_add_parameters(self, parameters):
-        while self.param_labels:
-            param_label = self.param_labels.pop()
-            param_input = self.param_inputs.pop()
+        for param_label, param_input in zip(self.param_labels, self.param_inputs):
             param_label.deleteLater()
             param_input.deleteLater()
             self.param_grid_layout.removeWidget(param_label)
@@ -383,7 +393,6 @@ class MyWidget(QWidget):
         self.param_grid_row = 0
         self.param_grid_col = 0
 
-        # 새로운 파라미터들 추가
         for key, value in parameters.items():
             param_label = QLabel(key)
             param_label.setMinimumWidth(130)
@@ -392,26 +401,58 @@ class MyWidget(QWidget):
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
             param_input.setText(value)
+            param_checkbox = QCheckBox()
+            self.selected_params.append(param_checkbox)
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
-            self.add_param_to_grid(param_label, param_input)
+            self.param_names.append(key)
+            self.add_param_to_layout(self.param_grid_layout, param_label, param_input, param_checkbox)
+        print(self.param_names)
 
     def remove_parameter(self):
-        if self.param_labels:
-            param_label = self.param_labels.pop()
-            param_input = self.param_inputs.pop()
-            param_label.deleteLater()
-            param_input.deleteLater()
-            v_layout = self.layout()
-            v_layout.removeWidget(param_label)
-            v_layout.removeWidget(param_input)
-            param_label.setParent(None)
-            param_input.setParent(None)
+        removed_indices = [i for i, checkbox in enumerate(self.selected_params) if checkbox.isChecked()]
+        if not removed_indices:
+            return  # No selected parameter to remove
 
-            self.param_grid_col -= 1
-            if self.param_grid_col < 0:
-                self.param_grid_col = self.max_cols - 1
-                self.param_grid_row -= 1
+        for index in sorted(removed_indices, reverse=True):
+            # Remove widgets from layout and delete them
+            self.param_grid_layout.removeWidget(self.selected_params[index])
+            self.param_grid_layout.removeWidget(self.param_labels[index])
+            self.param_grid_layout.removeWidget(self.param_inputs[index])
+            self.selected_params[index].deleteLater()
+            self.param_labels[index].deleteLater()
+            self.param_inputs[index].deleteLater()
+            # Remove items from lists
+            del self.selected_params[index]
+            del self.param_labels[index]
+            del self.param_inputs[index]
+            del self.param_names[index]
+
+        self.rearrange_parameters()
+
+    def rearrange_parameters(self):
+        # Clear the grid layout
+        while self.param_grid_layout.count():
+            child = self.param_grid_layout.takeAt(0)
+            if child.widget():
+                child.widget().setParent(None)
+
+        # Reset row and column counters
+        self.param_grid_row = 0
+        self.param_grid_col = 0
+
+        # Re-add remaining widgets to the grid
+        for i in range(len(self.param_labels)):
+            checkbox = self.selected_params[i]
+            label = self.param_labels[i]
+            input_field = self.param_inputs[i]
+            self.param_grid_layout.addWidget(checkbox, self.param_grid_row, self.param_grid_col * 3)
+            self.param_grid_layout.addWidget(label, self.param_grid_row, self.param_grid_col * 3 + 1)
+            self.param_grid_layout.addWidget(input_field, self.param_grid_row, self.param_grid_col * 3 + 2)
+            self.param_grid_col += 1
+            if self.param_grid_col >= self.max_cols:
+                self.param_grid_col = 0
+                self.param_grid_row += 1
 
     def get_parameters(self):
         # 입력된 파라미터 수집
@@ -594,9 +635,13 @@ class DataJoinerApp(QWidget):
         layout.addWidget(self.api_url2_edit)
         layout.addWidget(self.select_button2)  # 올바른 버튼 변수명 사용
 
-        self.join_column_edit = QLineEdit(self)
-        layout.addWidget(QLabel('조인할 컬럼 이름:'))
-        layout.addWidget(self.join_column_edit)
+        self.join_column1_edit = QLineEdit(self)
+        layout.addWidget(QLabel('조인할 컬럼1 이름:'))
+        layout.addWidget(self.join_column1_edit)
+
+        self.join_column2_edit = QLineEdit(self)
+        layout.addWidget(QLabel('조인할 컬럼2 이름:'))
+        layout.addWidget(self.join_column2_edit)
 
         self.join_button = QPushButton('데이터 조인', self)
         self.join_button.clicked.connect(self.join_data)
@@ -619,11 +664,21 @@ class DataJoinerApp(QWidget):
     def join_data(self):
         api_url_1 = self.api_url1_edit.text()
         api_url_2 = self.api_url2_edit.text()
-        join_column = self.join_column_edit.text()
+        join_column1 = self.join_column1_edit.text()
+        join_column2 = self.join_column2_edit.text()
 
-        if not api_url_1 or not api_url_2 or not join_column:
-            QMessageBox.warning(self, '경고', 'API URL과 조인할 컬럼 이름을 입력해야 합니다!')
-            return
+        fields = {
+        self.api_url1_edit: 'API URL',
+        self.api_url2_edit: 'API URL',
+        self.join_column1_edit: '조인할 컬럼 이름',
+        self.join_column2_edit: '조인할 컬럼 이름'
+        }
+
+        for field, name in fields.items():
+            if not field.text():
+                QMessageBox.warning(self, '경고', f'{name}을(를) 입력해야 합니다!')
+                field.setFocus()
+                return
         
         df1 = fetch_data(api_url_1)
         df2 = fetch_data(api_url_2)
@@ -632,14 +687,14 @@ class DataJoinerApp(QWidget):
             QMessageBox.critical(self, '오류', '데이터를 가져오는 데 실패했습니다. API URL을 확인해주세요.')
             return
 
-        if join_column in df1.columns and join_column in df2.columns:
-            self.joined_data = pd.merge(df1, df2, on=join_column, how='inner')
+        if join_column1 in df1.columns and join_column2 in df2.columns:
+            self.joined_data = pd.merge(df1, df2, left_on=join_column1, right_on=join_column2, how='inner')
             self.show_data_in_table(self.joined_data)
         else:
             QMessageBox.warning(self, '오류', '조인할 컬럼이 누락되었거나 잘못되었습니다.')
             self.result_table.clear()  # 테이블 초기화
             self.result_table.setRowCount(0)
-            self.result_table.setColumnCount(0)        
+            self.result_table.setColumnCount(0)
 
     def show_data_in_table(self, data):
         self.result_table.setRowCount(data.shape[0])
@@ -684,10 +739,10 @@ class MainApp(QWidget):
         # 버튼 두 개가 있는 수평 레이아웃 생성
         hbox = QVBoxLayout()
 
-        btn1 = QPushButton('API 조회', self)
+        btn1 = QPushButton('API 호출', self)
         btn1.clicked.connect(self.showMyWidgetApp)  # 버튼 1 클릭 시 showMyWidgetApp 메서드 호출
         
-        btn2 = QPushButton('조인', self)
+        btn2 = QPushButton('API && API 병합', self)
         btn2.clicked.connect(self.showDataJoinerApp)  # 버튼 2 클릭 시 showDataJoinerApp 메서드 호출
         
         hbox.addWidget(btn1)
