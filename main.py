@@ -431,7 +431,7 @@ class MyWidget(QWidget):
         self.rearrange_parameters()
 
     def rearrange_parameters(self):
-        # Clear the grid layout
+        # 그리드 레이아웃 초기화
         while self.param_grid_layout.count():
             child = self.param_grid_layout.takeAt(0)
             if child.widget():
