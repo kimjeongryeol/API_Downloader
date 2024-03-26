@@ -254,7 +254,7 @@ class ParameterViewer(QWidget):
 class MyWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.df_data = pd.DataFrame() # 데이터 프레임???
+        self.df_data = pd.DataFrame() # 데이터 프레임?!!?!
         self.origin_data = None
         self.param_labels = []  # 파라미터 라벨 리스트
         self.param_inputs = []  # 파라미터 입력 필드 리스트
@@ -382,32 +382,62 @@ class MyWidget(QWidget):
             param_input.setFocus()
 
     def auto_add_parameters(self, parameters):
-        for param_label, param_input in zip(self.param_labels, self.param_inputs):
-            param_label.deleteLater()
-            param_input.deleteLater()
+        # First, clear any existing parameter widgets to avoid duplication.
+        for param_label in self.param_labels:
             self.param_grid_layout.removeWidget(param_label)
-            self.param_grid_layout.removeWidget(param_input)
-            param_label.setParent(None)
-            param_input.setParent(None)
+            param_label.deleteLater()
 
+        for param_input in self.param_inputs:
+            self.param_grid_layout.removeWidget(param_input)
+            param_input.deleteLater()
+
+        for param_checkbox in self.selected_params:
+            self.param_grid_layout.removeWidget(param_checkbox)
+            param_checkbox.deleteLater()
+
+        # Clear the lists after deleting the widgets
+        self.param_labels.clear()
+        self.param_inputs.clear()
+        self.selected_params.clear()
+        self.param_names.clear()
+
+        # Reset the grid layout counters for re-adding widgets
         self.param_grid_row = 0
         self.param_grid_col = 0
 
-        for key, value in parameters.items():
-            param_label = QLabel(key)
-            param_label.setMinimumWidth(130)
-            param_label.setMaximumWidth(130)
-            param_input = EnterLineEdit(self)
-            param_input.setMaximumWidth(200)
-            param_input.setMinimumWidth(200)
-            param_input.setText(value)
+        # Now, iterate over the new parameters and add them to the UI
+        for param_name, param_value in parameters.items():
+            # Dynamically create and configure the parameter's label
+            param_label = QLabel(param_name)
+            param_label.setToolTip(param_name)  # Show full name on hover
+
+            # Create the QLineEdit for input, setting it with the parameter's value
+            param_input = QLineEdit()
+            param_input.setText(param_value)
+
+            # Create a checkbox for this parameter, might be used for selection (e.g., for deletion)
             param_checkbox = QCheckBox()
-            self.selected_params.append(param_checkbox)
+
+            # Keep track of these widgets in lists for management purposes
             self.param_labels.append(param_label)
             self.param_inputs.append(param_input)
-            self.param_names.append(key)
-            self.add_param_to_layout(self.param_grid_layout, param_label, param_input, param_checkbox)
-        print(self.param_names)
+            self.selected_params.append(param_checkbox)
+            self.param_names.append(param_name)
+
+            # Add the widgets to the layout, ensuring they are placed correctly
+            self.param_grid_layout.addWidget(param_checkbox, self.param_grid_row, self.param_grid_col * 3)
+            self.param_grid_layout.addWidget(param_label, self.param_grid_row, self.param_grid_col * 3 + 1)
+            self.param_grid_layout.addWidget(param_input, self.param_grid_row, self.param_grid_col * 3 + 2)
+
+            # Update counters for grid positioning
+            self.param_grid_col += 1
+            if self.param_grid_col >= self.max_cols:  # If we've reached the end of a row, move to the next row
+                self.param_grid_col = 0
+                self.param_grid_row += 1
+
+        # After re-adding all parameters, refresh the layout to reflect the changes
+        self.param_grid_layout.update()
+
 
     def remove_parameter(self):
         removed_indices = [i for i, checkbox in enumerate(self.selected_params) if checkbox.isChecked()]
