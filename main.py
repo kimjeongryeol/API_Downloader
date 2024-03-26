@@ -410,38 +410,49 @@ class MyWidget(QWidget):
         print(self.param_names)
 
     def remove_parameter(self):
-        # 선택된 파라미터들을 삭제
-        for i, checkbox in reversed(list(enumerate(self.selected_params))):
-            if checkbox.isChecked():
-                param_label = self.param_labels.pop(i)
-                param_input = self.param_inputs.pop(i)
-                param_label.deleteLater()
-                param_input.deleteLater()
-                self.param_names.pop(i)
-                param_checkbox = self.selected_params.pop(i)
-                param_checkbox.deleteLater()
-                v_layout = self.layout()
-                v_layout.removeWidget(param_label)
-                v_layout.removeWidget(param_input)
-                v_layout.removeWidget(param_checkbox)
-                param_label.setParent(None)
-                param_input.setParent(None)
-                param_checkbox.setParent(None)
+        removed_indices = [i for i, checkbox in enumerate(self.selected_params) if checkbox.isChecked()]
+        if not removed_indices:
+            return  # No selected parameter to remove
 
-        #         self.param_grid_col -= 1
-        #         if self.param_grid_col < 0:
-        #             self.param_grid_col = self.max_cols - 1
-        #             self.param_grid_row -= 1
+        for index in sorted(removed_indices, reverse=True):
+            # Remove widgets from layout and delete them
+            self.param_grid_layout.removeWidget(self.selected_params[index])
+            self.param_grid_layout.removeWidget(self.param_labels[index])
+            self.param_grid_layout.removeWidget(self.param_inputs[index])
+            self.selected_params[index].deleteLater()
+            self.param_labels[index].deleteLater()
+            self.param_inputs[index].deleteLater()
+            # Remove items from lists
+            del self.selected_params[index]
+            del self.param_labels[index]
+            del self.param_inputs[index]
+            del self.param_names[index]
 
-        # # 레이아웃 재배치 수정 필요 ㅜㅜ
-        # for row in range(self.param_grid_layout.rowCount()):
-        #     for col in range(self.max_cols):
-        #         item = self.param_grid_layout.itemAtPosition(row, col)
-        #         if item:
-        #             widget = item.widget()
-        #             if widget:
-        #                 self.param_grid_layout.removeWidget(widget)
-        #                 self.param_grid_layout.addWidget(widget, row, col)
+        self.rearrange_parameters()
+
+    def rearrange_parameters(self):
+        # Clear the grid layout
+        while self.param_grid_layout.count():
+            child = self.param_grid_layout.takeAt(0)
+            if child.widget():
+                child.widget().setParent(None)
+
+        # Reset row and column counters
+        self.param_grid_row = 0
+        self.param_grid_col = 0
+
+        # Re-add remaining widgets to the grid
+        for i in range(len(self.param_labels)):
+            checkbox = self.selected_params[i]
+            label = self.param_labels[i]
+            input_field = self.param_inputs[i]
+            self.param_grid_layout.addWidget(checkbox, self.param_grid_row, self.param_grid_col * 3)
+            self.param_grid_layout.addWidget(label, self.param_grid_row, self.param_grid_col * 3 + 1)
+            self.param_grid_layout.addWidget(input_field, self.param_grid_row, self.param_grid_col * 3 + 2)
+            self.param_grid_col += 1
+            if self.param_grid_col >= self.max_cols:
+                self.param_grid_col = 0
+                self.param_grid_row += 1
 
     def get_parameters(self):
         # 입력된 파라미터 수집
