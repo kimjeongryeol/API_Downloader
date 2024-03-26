@@ -405,35 +405,20 @@ class MyWidget(QWidget):
         self.param_grid_row = 0
         self.param_grid_col = 0
 
-        # Now, iterate over the new parameters and add them to the UI
-        for param_name, param_value in parameters.items():
-            # Dynamically create and configure the parameter's label
-            param_label = QLabel(param_name)
-            param_label.setToolTip(param_name)  # Show full name on hover
-
-            # Create the QLineEdit for input, setting it with the parameter's value
-            param_input = QLineEdit()
-            param_input.setText(param_value)
-
-            # Create a checkbox for this parameter, might be used for selection (e.g., for deletion)
-            param_checkbox = QCheckBox()
-
-            # Keep track of these widgets in lists for management purposes
-            self.param_labels.append(param_label)
-            self.param_inputs.append(param_input)
-            self.selected_params.append(param_checkbox)
-            self.param_names.append(param_name)
-
-            # Add the widgets to the layout, ensuring they are placed correctly
-            self.param_grid_layout.addWidget(param_checkbox, self.param_grid_row, self.param_grid_col * 3)
-            self.param_grid_layout.addWidget(param_label, self.param_grid_row, self.param_grid_col * 3 + 1)
-            self.param_grid_layout.addWidget(param_input, self.param_grid_row, self.param_grid_col * 3 + 2)
-
-            # Update counters for grid positioning
-            self.param_grid_col += 1
-            if self.param_grid_col >= self.max_cols:  # If we've reached the end of a row, move to the next row
-                self.param_grid_col = 0
-                self.param_grid_row += 1
+        for key, value in parameters.items():
+                param_label = QLabel(key)
+                param_label.setMinimumWidth(130)
+                param_label.setMaximumWidth(130)
+                param_input = EnterLineEdit(self)
+                param_input.setMaximumWidth(200)
+                param_input.setMinimumWidth(200)
+                param_input.setText(value)
+                param_checkbox = QCheckBox()
+                self.selected_params.append(param_checkbox)
+                self.param_labels.append(param_label)
+                self.param_inputs.append(param_input)
+                self.param_names.append(key)
+                self.add_param_to_layout(self.param_grid_layout, param_label, param_input, param_checkbox)    
 
         # After re-adding all parameters, refresh the layout to reflect the changes
         self.param_grid_layout.update()
