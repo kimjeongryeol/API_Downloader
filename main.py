@@ -410,7 +410,7 @@ class MyWidget(QWidget):
         print(self.param_names)
 
     def remove_parameter(self):
-        # 선택된 파라미터들을 삭제
+        # 선택된 파라미터들 삭제
         for i, checkbox in reversed(list(enumerate(self.selected_params))):
             if checkbox.isChecked():
                 param_label = self.param_labels.pop(i)
