@@ -417,6 +417,7 @@ class MyWidget(QWidget):
                 param_input = self.param_inputs.pop(i)
                 param_label.deleteLater()
                 param_input.deleteLater()
+                self.param_names.pop(i)
                 param_checkbox = self.selected_params.pop(i)
                 param_checkbox.deleteLater()
                 v_layout = self.layout()
@@ -427,20 +428,20 @@ class MyWidget(QWidget):
                 param_input.setParent(None)
                 param_checkbox.setParent(None)
 
-                self.param_grid_col -= 1
-                if self.param_grid_col < 0:
-                    self.param_grid_col = self.max_cols - 1
-                    self.param_grid_row -= 1
+        #         self.param_grid_col -= 1
+        #         if self.param_grid_col < 0:
+        #             self.param_grid_col = self.max_cols - 1
+        #             self.param_grid_row -= 1
 
-        # 레이아웃 재배치 수정 필요 ㅜㅜ
-        for row in range(self.param_grid_layout.rowCount()):
-            for col in range(self.max_cols):
-                item = self.param_grid_layout.itemAtPosition(row, col)
-                if item:
-                    widget = item.widget()
-                    if widget:
-                        self.param_grid_layout.removeWidget(widget)
-                        self.param_grid_layout.addWidget(widget, row, col)
+        # # 레이아웃 재배치 수정 필요 ㅜㅜ
+        # for row in range(self.param_grid_layout.rowCount()):
+        #     for col in range(self.max_cols):
+        #         item = self.param_grid_layout.itemAtPosition(row, col)
+        #         if item:
+        #             widget = item.widget()
+        #             if widget:
+        #                 self.param_grid_layout.removeWidget(widget)
+        #                 self.param_grid_layout.addWidget(widget, row, col)
 
     def get_parameters(self):
         # 입력된 파라미터 수집
