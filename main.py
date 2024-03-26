@@ -228,7 +228,7 @@ class ParameterViewer(QWidget):
                         self.my_widget_instance.api_input.setText(rows[0][0])
                         
                         parameters = {}
-                        for row in rows[1:]:  # Adjusted to skip the first row which is the API URL
+                        for row in rows[2:]:
                             key, value = row[0].split("=", 1)
                             if key == 'serviceKey':
                                 self.my_widget_instance.key_input.setText(value)
