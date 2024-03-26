@@ -241,10 +241,14 @@ class ParameterViewer(QWidget):
                         print(f"Error: {e}")
                     finally:
                         ParameterSaver.F_ConnectionClose()
-                # Additional logic for other parent_widget_types can be added here
+                elif self.parent_widget_type == "DataJoinerApp":
+                    if self.target_url_field == "api_url1_edit":
+                        self.my_widget_instance.api_url1_edit.setText(url)
+                    elif self.target_url_field == "api_url2_edit":
+                        self.my_widget_instance.api_url2_edit.setText(url)
                 self.close()
         else:
-            print("No row selected.")
+            print("선택된 행이 없습니다.")
 
 class MyWidget(QWidget):
     def __init__(self):
