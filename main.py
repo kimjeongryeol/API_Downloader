@@ -161,6 +161,30 @@ class PreviewUpdater:
                 item = QTableWidgetItem(str(data.iloc[row, col]))
                 preview_table.setItem(row, col, item)
 
+class APICache:
+    def __init__(self, capacity=10):
+        self.cache = {}
+        self.capacity = capacity
+        self.keys = []
+
+    def get(self, key):
+        """API 결과 반환. 캐시에 없으면 None 반환"""
+        return self.cache.get(key, None)
+
+    def set(self, key, value):
+        """API 호출 결과 캐시에 저장. 캐시가 가득 차면 가장 오래된 항목 제거"""
+        if key not in self.cache:
+            if len(self.keys) >= self.capacity:
+                oldest_key = self.keys.pop(0)
+                del self.cache[oldest_key]
+            self.keys.append(key)
+        self.cache[key] = value
+
+    def clear(self):
+        """캐시 초기화"""
+        self.cache.clear()
+        self.keys.clear()
+
 class ParameterViewer(QWidget):
     def __init__(self, my_widget_instance, parent_widget_type, target_url_field="api_url1_edit"):
         super().__init__()
@@ -259,6 +283,7 @@ class MyWidget(QWidget):
         self.param_grid_col = 0  # 변경: 첫 번째 파라미터부터 첫 번째 열에 배치
         self.max_cols = 3  # 한 행에 최대 파라미터 개수
         self.setup()  # UI 설정
+        self.apiCache = APICache()
 
     def setup(self):
         self.setWindowTitle('API 다운로더')
@@ -499,21 +524,33 @@ class MyWidget(QWidget):
         elif not service_key:
             QMessageBox.critical(None, '에러', '서비스 키를 입력하세요.')
             return None
-        
+
+        # 캐시에서 결과 조회
+        cache_key = url + '?' + '&'.join([f'{k}={v}' for k, v in self.get_parameters().items()])
+        cached_result = self.apiCache.get(cache_key)
+
+        if cached_result:
+            print("캐시에서 결과를 가져옴:", cache_key)  # 캐시에서 가져온 경우 로깅
+            self.origin_data = cached_result
+            self.df_data = fetch_data(cached_result.url)
+            PreviewUpdater.show_preview(self.preview_table, self.df_data)
+            return
+
         try:
-            # ApiCall 객체 생성
+            # ApiCall 객체 생성 및 API 호출
             api_caller = ApiCall(key=service_key, url=url)
-
-            # 파라미터 설정
             params = self.get_parameters()
-
-            # API 호출 (비동기 처리를 고려하지 않은 동기 방식의 예제)
             self.origin_data = api_caller.call(serviceKey=service_key, **params)
+
+            # 호출 결과를 캐시에 저장하고, 저장 사실을 로깅
+            self.apiCache.set(cache_key, self.origin_data)
+            print("API 호출 결과를 캐시에 저장:", cache_key)
+
             self.df_data = fetch_data(self.origin_data.url)
             if not self.df_data.empty:
                 PreviewUpdater.show_preview(self.preview_table, self.df_data)
-        except:
-            print('호출 실패')
+        except Exception as e:
+            QMessageBox.critical(None, '에러', f"호출 중 오류 발생: {e}")
 
     def download_parameters(self):
 
