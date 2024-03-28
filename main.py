@@ -481,19 +481,19 @@ class MyWidget(QWidget):
         self.param_grid_col = 0
 
         for key, value in parameters.items():
-                param_label = QLabel(key)
-                param_label.setMinimumWidth(130)
-                param_label.setMaximumWidth(130)
-                param_input = EnterLineEdit(self)
-                param_input.setMaximumWidth(200)
-                param_input.setMinimumWidth(200)
-                param_input.setText(value)
-                param_checkbox = QCheckBox()
-                self.selected_params.append(param_checkbox)
-                self.param_labels.append(param_label)
-                self.param_inputs.append(param_input)
-                self.param_names.append(key)
-                self.add_param_to_layout(self.param_grid_layout, param_label, param_input, param_checkbox)    
+            param_label = QLabel(key)
+            param_label.setMinimumWidth(130)
+            param_label.setMaximumWidth(130)
+            param_input = EnterLineEdit(self)
+            param_input.setMaximumWidth(200)
+            param_input.setMinimumWidth(200)
+            param_input.setText(value)
+            param_checkbox = QCheckBox()
+            self.selected_params.append(param_checkbox)
+            self.param_labels.append(param_label)
+            self.param_inputs.append(param_input)
+            self.param_names.append(key)
+            self.add_param_to_layout(self.param_grid_layout, param_label, param_input, param_checkbox)    
 
         # After re-adding all parameters, refresh the layout to reflect the changes
         self.param_grid_layout.update()
@@ -590,7 +590,7 @@ class MyWidget(QWidget):
             if not self.df_data.empty:
                 PreviewUpdater.show_preview(self.preview_table, self.df_data)
         except Exception as e:
-            QMessageBox.critical(None, '에러', f"호출 중 오류 발생: {e}")
+            return None
 
     def download_parameters(self):
 
@@ -681,10 +681,6 @@ class DataDownload:
                 
 def fetch_data(api_url):
     response = requests.get(api_url)
-    # if 'application/json' in response.headers['Content-Type']:
-    #     data = response.json()  # JSON 데이터 구조에 따라 수정 필요
-    #     df = pd.DataFrame(data)  # 적절한 키를 사용하여 DataFrame 생성
-    # else:
     data = parse_xml_to_dict(response.text)
     df = pd.DataFrame(data)
     return df
