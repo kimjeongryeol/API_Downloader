@@ -47,22 +47,25 @@ class ParameterSaver:
         backup_folder = './backups'
 
         # Use the BackUp class to check for database corruption
-        if BackUp.is_database_corrupted(db_path):
-            while True:  # Start a loop to allow for re-prompting
+        while True:
+            if BackUp.is_database_corrupted(db_path):
                 reply = QMessageBox.question(None, '데이터베이스 이상 발생!', '데이터 손상! 디비를 복구 하시겠습니까?',
                                              QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
                 if reply == QMessageBox.Yes:
                     if not BackUp.recover_database(db_path, backup_folder):
                         QMessageBox.critical(None, '복구 실패', '데이터베이스 복구에 실패했습니다. 백업 파일이 없을 수 있습니다.')
-                    return None  # Exit the method if recovery was chosen but failed
-                    # If recovery is successful, the loop will break after this block
+                        # Here, consider if you want to exit or allow another attempt
+                        return None
+                    else:
+                        break  # Recovery successful, break out of the loop
                 else:
-                    secondaryReply = QMessageBox.question(None, '주의', '복구하지 않으면 저장된 데이터는 모두 삭제 될 수 있습니다. 복구하지 않겠습니까?',
+                    secondaryReply = QMessageBox.question(None, '주의', '복구하지 않으면 저장된 데이터는 모두 삭제 될 수 있습니다. 정말복구하지 않겠습니까?',
                                                           QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
                     if secondaryReply == QMessageBox.Yes:
-                        break  # Proceed without recovery
-                    # If "No" is chosen, the loop continues, and the user is prompted again
-            # If the loop exits, either through recovery or deciding to proceed without recovery, the database connection attempts proceed
+                        break  # User chose to continue without recovery, break out of the loop
+                    # If user selects "No", the loop will continue and re-prompt for recovery
+            else:
+                break  # No corruption detected, proceed
 
         if ParameterSaver.db_connection is None:
             try:
@@ -70,17 +73,19 @@ class ParameterSaver:
                 ParameterSaver.db_cursor = ParameterSaver.db_connection.cursor()
                 print("SQLite 데이터베이스 연결 성공!")
                 
-                # Backup database after successful connection
+                # Backup the database after successful connection
                 BackUp.backup_database(db_path)
 
-                # Proceed with setting up the database schema if necessary
+                # Ensure the required tables exist
                 ParameterSaver.ensure_database_schema()
 
             except sqlite3.Error as error:
                 print("SQLite 연결 오류: ", error)
-                return None
+                QMessageBox.critical(None, 'SQLite 연결 오류', "데이터베이스 연결에 실패했습니다.")
+                return None  # Return None to indicate failure to connect
 
         return ParameterSaver.db_connection, ParameterSaver.db_cursor
+    
     def ensure_database_schema():
         # Assuming your schema creation logic is here
         ParameterSaver.db_cursor.execute('''
@@ -550,32 +555,27 @@ class MyWidget(QWidget):
             QMessageBox.critical(None, '에러', '서비스 키를 입력하세요.')
             return None
 
-        # 캐시에서 결과 조회
-        cache_key = url + '?' + '&'.join([f'{k}={v}' for k, v in self.get_parameters().items()])
-        cached_result = self.apiCache.get(cache_key)
-
-        if cached_result:
-            print("캐시에서 결과를 가져옴:", cache_key)  # 캐시에서 가져온 경우 로깅
-            self.origin_data = cached_result
-            self.df_data = fetch_data(cached_result.url)
-            PreviewUpdater.show_preview(self.preview_table, self.df_data)
-            return
-
         try:
             # ApiCall 객체 생성 및 API 호출
             api_caller = ApiCall(key=service_key, url=url)
             params = self.get_parameters()
-            self.origin_data = api_caller.call(serviceKey=service_key, **params)
+            response = api_caller.call(serviceKey=service_key, **params)
 
-            # 호출 결과를 캐시에 저장하고, 저장 사실을 로깅
-            self.apiCache.set(cache_key, self.origin_data)
-            print("API 호출 결과를 캐시에 저장:", cache_key)
+            if response is not None and response.status_code == 200:  # Assuming 'response' has a 'status_code' attribute
+                # Process and display the data
+                self.origin_data = response
+                self.df_data = fetch_data(response.url)
+                if not self.df_data.empty:
+                    PreviewUpdater.show_preview(self.preview_table, self.df_data)
 
-            self.df_data = fetch_data(self.origin_data.url)
-            if not self.df_data.empty:
-                PreviewUpdater.show_preview(self.preview_table, self.df_data)
+                # Update the cache after confirming the API call was successful
+                cache_key = url + '?' + '&'.join([f'{k}={v}' for k, v in params.items()])
+                self.apiCache.set(cache_key, response)  # Cache the successful response
+                print("API 호출 결과를 캐시에 저장:", cache_key)
+            else:
+                QMessageBox.critical(self, 'API 호출 실패', 'API 호출에 실패했습니다. 응답 상태 코드: ' + str(response.status_code))
         except Exception as e:
-            return None
+            QMessageBox.critical(self, 'API 호출 예외', f'예외 발생: {e}')
 
     def download_parameters(self):
 
