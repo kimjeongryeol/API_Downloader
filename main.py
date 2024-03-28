@@ -4,6 +4,9 @@ import sys
 import xml.etree.ElementTree as ET
 import pandas as pd
 import requests
+import shutil
+import os
+from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -40,29 +43,35 @@ class ParameterSaver:
 
     @staticmethod
     def F_connectPostDB():
-        # 이미 연결된 데이터베이스가 있는 경우 해당 연결을 재사용
+        db_path = 'params_db.sqlite'
+        backup_folder = './backups'
+
+        # Use the BackUp class to check for database corruption
+        if BackUp.is_database_corrupted(db_path):
+            # Prompt the user for recovery
+            reply = QMessageBox.question(None, '데이터베이스 이상 발생!', '데이터 손상! 디비를 복구 하시겠습니까?',
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if reply == QMessageBox.Yes:
+                if not BackUp.recover_database(db_path, backup_folder):
+                    QMessageBox.critical(None, '복구 실패', '데이터베이스 복구에 실패했습니다. 백업 파일이 없을 수 있습니다.')
+                    return None
+                else:
+                    QMessageBox.information(None, '복구 성공', '데이터베이스가 성공적으로 복구되었습니다.')
+            else:
+                QMessageBox.warning(None, '복구 취소', '데이터베이스 복구가 취소되었습니다.')
+                return None
+
         if ParameterSaver.db_connection is None:
             try:
-                ParameterSaver.db_connection = sqlite3.connect('params_db.sqlite')
+                ParameterSaver.db_connection = sqlite3.connect(db_path)
                 ParameterSaver.db_cursor = ParameterSaver.db_connection.cursor()
                 print("SQLite 데이터베이스 연결 성공!")
+                
+                # Backup database after successful connection
+                BackUp.backup_database(db_path)
 
-                # URL_TB 테이블 생성
-                ParameterSaver.db_cursor.execute('''
-                CREATE TABLE IF NOT EXISTS URL_TB (
-                    id TEXT PRIMARY KEY,
-                    url TEXT NOT NULL
-                )''')
-
-                # PARAMS_TB 테이블 생성
-                ParameterSaver.db_cursor.execute('''
-                CREATE TABLE IF NOT EXISTS PARAMS_TB (
-                    id TEXT,
-                    param TEXT,
-                    FOREIGN KEY (id) REFERENCES URL_TB(id)
-                )''')
-
-                ParameterSaver.db_connection.commit()
+                # Proceed with setting up the database schema if necessary
+                ParameterSaver.ensure_database_schema()
 
             except sqlite3.Error as error:
                 print("SQLite 연결 오류: ", error)
@@ -70,9 +79,23 @@ class ParameterSaver:
 
         return ParameterSaver.db_connection, ParameterSaver.db_cursor
 
+    def ensure_database_schema():
+        # Assuming your schema creation logic is here
+        ParameterSaver.db_cursor.execute('''
+            CREATE TABLE IF NOT EXISTS URL_TB (
+                id TEXT PRIMARY KEY,
+                url TEXT NOT NULL
+            )''')
+        ParameterSaver.db_cursor.execute('''
+            CREATE TABLE IF NOT EXISTS PARAMS_TB (
+                id TEXT,
+                param TEXT,
+                FOREIGN KEY (id) REFERENCES URL_TB(id)
+            )''')
+        ParameterSaver.db_connection.commit()
+
     @staticmethod
     def F_ConnectionClose():
-        # 연결이 존재하는 경우에만 닫기
         if ParameterSaver.db_connection:
             ParameterSaver.db_cursor.close()
             ParameterSaver.db_connection.close()
@@ -147,6 +170,34 @@ class ParameterSaver:
 
         finally:
             ParameterSaver.F_ConnectionClose()
+
+class BackUp:
+    def backup_database(db_path):
+        if not os.path.exists('./backups'):
+            os.makedirs('./backups')
+        backup_path = f"./backups/{os.path.basename(db_path)}_{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
+        shutil.copy(db_path, backup_path)
+        print(f"Database backed up to {backup_path}")
+
+    def is_database_corrupted(db_path):
+        # Placeholder for actual corruption detection. Currently checks existence.
+        return not os.path.exists(db_path)
+
+    def recover_database(db_path, backup_folder):
+        backups = sorted([f for f in os.listdir(backup_folder) if f.startswith(os.path.basename(db_path)) and f.endswith(".bak")],
+                        reverse=True)
+        if backups:
+            latest_backup = os.path.join(backup_folder, backups[0])
+            try:
+                shutil.copy(latest_backup, db_path)
+                print("Database successfully recovered from backup.")
+                return True
+            except Exception as e:
+                print(f"Failed to recover database: {e}")
+        else:
+            print("No backup found for recovery.")
+        return False
+        
 
 class PreviewUpdater:
     @staticmethod
