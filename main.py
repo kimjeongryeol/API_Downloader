@@ -48,18 +48,21 @@ class ParameterSaver:
 
         # Use the BackUp class to check for database corruption
         if BackUp.is_database_corrupted(db_path):
-            # Prompt the user for recovery
-            reply = QMessageBox.question(None, '데이터베이스 이상 발생!', '데이터 손상! 디비를 복구 하시겠습니까?',
-                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-            if reply == QMessageBox.Yes:
-                if not BackUp.recover_database(db_path, backup_folder):
-                    QMessageBox.critical(None, '복구 실패', '데이터베이스 복구에 실패했습니다. 백업 파일이 없을 수 있습니다.')
-                    return None
+            while True:  # Start a loop to allow for re-prompting
+                reply = QMessageBox.question(None, '데이터베이스 이상 발생!', '데이터 손상! 디비를 복구 하시겠습니까?',
+                                             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                if reply == QMessageBox.Yes:
+                    if not BackUp.recover_database(db_path, backup_folder):
+                        QMessageBox.critical(None, '복구 실패', '데이터베이스 복구에 실패했습니다. 백업 파일이 없을 수 있습니다.')
+                    return None  # Exit the method if recovery was chosen but failed
+                    # If recovery is successful, the loop will break after this block
                 else:
-                    QMessageBox.information(None, '복구 성공', '데이터베이스가 성공적으로 복구되었습니다.')
-            else:
-                QMessageBox.warning(None, '복구 취소', '데이터베이스 복구가 취소되었습니다.')
-                return None
+                    secondaryReply = QMessageBox.question(None, '주의', '복구하지 않으면 저장된 데이터는 모두 삭제 될 수 있습니다. 복구하지 않겠습니까?',
+                                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                    if secondaryReply == QMessageBox.Yes:
+                        break  # Proceed without recovery
+                    # If "No" is chosen, the loop continues, and the user is prompted again
+            # If the loop exits, either through recovery or deciding to proceed without recovery, the database connection attempts proceed
 
         if ParameterSaver.db_connection is None:
             try:
@@ -78,7 +81,6 @@ class ParameterSaver:
                 return None
 
         return ParameterSaver.db_connection, ParameterSaver.db_cursor
-
     def ensure_database_schema():
         # Assuming your schema creation logic is here
         ParameterSaver.db_cursor.execute('''
@@ -521,28 +523,13 @@ class MyWidget(QWidget):
         self.rearrange_parameters()
 
     def rearrange_parameters(self):
-        # 그리드 레이아웃 초기화
-        while self.param_grid_layout.count():
-            child = self.param_grid_layout.takeAt(0)
-            if child.widget():
-                child.widget().setParent(None)
-
-        # Reset row and column counters
         self.param_grid_row = 0
         self.param_grid_col = 0
 
-        # Re-add remaining widgets to the grid
-        for i in range(len(self.param_labels)):
-            checkbox = self.selected_params[i]
-            label = self.param_labels[i]
-            input_field = self.param_inputs[i]
-            self.param_grid_layout.addWidget(checkbox, self.param_grid_row, self.param_grid_col * 3)
-            self.param_grid_layout.addWidget(label, self.param_grid_row, self.param_grid_col * 3 + 1)
-            self.param_grid_layout.addWidget(input_field, self.param_grid_row, self.param_grid_col * 3 + 2)
-            self.param_grid_col += 1
-            if self.param_grid_col >= self.max_cols:
-                self.param_grid_col = 0
-                self.param_grid_row += 1
+        params = {item: None for item in self.param_names}
+        self.auto_add_parameters(params)
+
+        
 
     def get_parameters(self):
         # 입력된 파라미터 수집
