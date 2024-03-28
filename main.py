@@ -522,27 +522,10 @@ class MyWidget(QWidget):
 
     def rearrange_parameters(self):
         # 그리드 레이아웃 초기화
-        while self.param_grid_layout.count():
-            child = self.param_grid_layout.takeAt(0)
-            if child.widget():
-                child.widget().setParent(None)
-
-        # Reset row and column counters
         self.param_grid_row = 0
         self.param_grid_col = 0
-
-        # Re-add remaining widgets to the grid
-        for i in range(len(self.param_labels)):
-            checkbox = self.selected_params[i]
-            label = self.param_labels[i]
-            input_field = self.param_inputs[i]
-            self.param_grid_layout.addWidget(checkbox, self.param_grid_row, self.param_grid_col * 3)
-            self.param_grid_layout.addWidget(label, self.param_grid_row, self.param_grid_col * 3 + 1)
-            self.param_grid_layout.addWidget(input_field, self.param_grid_row, self.param_grid_col * 3 + 2)
-            self.param_grid_col += 1
-            if self.param_grid_col >= self.max_cols:
-                self.param_grid_col = 0
-                self.param_grid_row += 1
+        params = {item: None for item in self.param_names}
+        self.auto_add_parameters(params)
 
     def get_parameters(self):
         # 입력된 파라미터 수집
