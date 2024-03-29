@@ -537,7 +537,15 @@ class MyWidget(QWidget):
         # 그리드 레이아웃 초기화
         self.param_grid_row = 0
         self.param_grid_col = 0
-        params = {item: None for item in self.param_names}
+
+        # 현재 입력된 값들을 유지하기 위해 딕셔너리에 추가
+        params = {}
+        for label, input_widget in zip(self.param_labels, self.param_inputs):
+            param_name = label.text()
+            param_value = input_widget.text()
+            params[param_name] = param_value
+
+        # 기존의 파라미터를 유지하면서 새로운 파라미터 추가
         self.auto_add_parameters(params)
 
     def get_parameters(self):
