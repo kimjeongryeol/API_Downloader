@@ -969,7 +969,7 @@ class MainApp(QMainWindow):
         
         centralWidget.setLayout(hbox)
         
-        # 커스텀 타이틀 바 설정
+        # 커스텀 타이틀 바 설정!@!@
         self.custom_title_bar = CustomTitleBar(self)
         self.setMenuWidget(self.custom_title_bar)
 
