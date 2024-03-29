@@ -12,7 +12,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, 
-    QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QCheckBox, QSizePolicy
+    QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QCheckBox, QSizePolicy, QComboBox
     )
 
 class ApiCall:
@@ -244,9 +244,9 @@ class APICache:
         self.keys.clear()
 
 class ParameterViewer(QWidget):
-    def __init__(self, my_widget_instance, parent_widget_type, target_url_field="api_url1_edit"):
+    def __init__(self, widget_instance, parent_widget_type, target_url_field="api_url1_edit"):
         super().__init__()
-        self.my_widget_instance = my_widget_instance
+        self.widget_instance = widget_instance
         self.parent_widget_type = parent_widget_type
         self.target_url_field = target_url_field  # 추가된 인자
         self.setWindowTitle('파라미터 목록')
@@ -295,9 +295,9 @@ class ParameterViewer(QWidget):
 
                 if self.parent_widget_type == "MyWidget":
                     # Clear the preview table in MyWidget before setting new parameters
-                    self.my_widget_instance.preview_table.clearContents()
-                    self.my_widget_instance.preview_table.setRowCount(0)
-                    self.my_widget_instance.preview_table.setColumnCount(0)
+                    self.widget_instance.preview_table.clearContents()
+                    self.widget_instance.preview_table.setRowCount(0)
+                    self.widget_instance.preview_table.setColumnCount(0)
 
                     id_item = self.param_table.item(selected_row, 0)
                     id = id_item.text()
@@ -307,17 +307,17 @@ class ParameterViewer(QWidget):
                         cursor.execute("SELECT param FROM PARAMS_TB WHERE id = ?", (id,))
                         rows = cursor.fetchall()
 
-                        self.my_widget_instance.api_input.setText(rows[0][0])
+                        self.widget_instance.api_input.setText(rows[0][0])
                         
                         parameters = {}
                         for row in rows[2:]:
                             key, value = row[0].split("=", 1)
                             if key == 'serviceKey':
-                                self.my_widget_instance.key_input.setText(value)
+                                self.widget_instance.key_input.setText(value)
                             else:
                                 parameters[key] = value
 
-                        self.my_widget_instance.auto_add_parameters(parameters)
+                        self.widget_instance.auto_add_parameters(parameters)
 
                     except sqlite3.Error as e:
                         print(f"Error: {e}")
@@ -325,9 +325,15 @@ class ParameterViewer(QWidget):
                         ParameterSaver.F_ConnectionClose()
                 elif self.parent_widget_type == "DataJoinerApp":
                     if self.target_url_field == "api_url1_edit":
-                        self.my_widget_instance.api_url1_edit.setText(url)
+                        self.widget_instance.api_url1_edit.setText(url)
+                        self.widget_instance.df1 = fetch_data(url)
+                        self.widget_instance.join_column1_combobox.clear()
+                        self.widget_instance.join_column1_combobox.addItems(self.widget_instance.df1.columns)
                     elif self.target_url_field == "api_url2_edit":
-                        self.my_widget_instance.api_url2_edit.setText(url)
+                        self.widget_instance.api_url2_edit.setText(url)
+                        self.widget_instance.df2 = fetch_data(url)
+                        self.widget_instance.join_column2_combobox.clear()
+                        self.widget_instance.join_column2_combobox.addItems(self.widget_instance.df2.columns)
                 self.close()
         else:
             print("선택된 행이 없습니다.")
@@ -696,6 +702,8 @@ class DataJoinerApp(QWidget):
     def __init__(self):
         super().__init__()
         self.initUI()
+        self.df1 = None
+        self.df2 = None
         self.joined_data = None
 
     def initUI(self):
@@ -705,11 +713,13 @@ class DataJoinerApp(QWidget):
         layout = QVBoxLayout()
 
         self.api_url1_edit = QLineEdit(self)
+        self.api_url1_edit.setReadOnly(True)
         self.select_button1 = QPushButton('URL1 선택', self)
         # URL1 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button1.clicked.connect(lambda: self.show_parameters('api_url1_edit'))
-        
+
         self.api_url2_edit = QLineEdit(self)
+        self.api_url2_edit.setReadOnly(True)
         self.select_button2 = QPushButton('URL2 선택', self)
         # URL2 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button2.clicked.connect(lambda: self.show_parameters('api_url2_edit'))
@@ -723,13 +733,13 @@ class DataJoinerApp(QWidget):
         layout.addWidget(self.api_url2_edit)
         layout.addWidget(self.select_button2)  # 올바른 버튼 변수명 사용
 
-        self.join_column1_edit = QLineEdit(self)
+        self.join_column1_combobox = QComboBox(self)
         layout.addWidget(QLabel('조인할 컬럼1 이름:'))
-        layout.addWidget(self.join_column1_edit)
+        layout.addWidget(self.join_column1_combobox)
 
-        self.join_column2_edit = QLineEdit(self)
+        self.join_column2_combobox = QComboBox(self)
         layout.addWidget(QLabel('조인할 컬럼2 이름:'))
-        layout.addWidget(self.join_column2_edit)
+        layout.addWidget(self.join_column2_combobox)
 
         self.join_button = QPushButton('데이터 조인', self)
         self.join_button.clicked.connect(self.join_data)
@@ -750,33 +760,33 @@ class DataJoinerApp(QWidget):
 
 
     def join_data(self):
-        api_url_1 = self.api_url1_edit.text()
-        api_url_2 = self.api_url2_edit.text()
-        join_column1 = self.join_column1_edit.text()
-        join_column2 = self.join_column2_edit.text()
+        # api_url_1 = self.api_url1_edit.text()
+        # api_url_2 = self.api_url2_edit.text()
+        join_column1 = self.join_column1_combobox.currentText()
+        join_column2 = self.join_column2_combobox.currentText()
 
-        fields = {
-        self.api_url1_edit: 'API URL',
-        self.api_url2_edit: 'API URL',
-        self.join_column1_edit: '조인할 컬럼 이름',
-        self.join_column2_edit: '조인할 컬럼 이름'
-        }
-
-        for field, name in fields.items():
-            if not field.text():
-                QMessageBox.warning(self, '경고', f'{name}을(를) 입력해야 합니다!')
-                field.setFocus()
-                return
+        if not self.api_url1_edit.text():
+            QMessageBox.warning(self, '경고', '첫 번째 API URL을(를) 선택해야 합니다!')
+            return
+        elif not self.api_url2_edit.text():
+            QMessageBox.warning(self, '경고', '두 번째 API URL을(를) 선택해야 합니다!')
+            return
+        elif not self.join_column1_combobox.currentText():
+            QMessageBox.warning(self, '경고', '첫 번째 API URL을(를) 선택해야 합니다!')
+            return
+        elif not self.join_column1_combobox.currentText():
+            QMessageBox.warning(self, '경고', '첫 번째 API URL을(를) 선택해야 합니다!')
+            return
         
-        df1 = fetch_data(api_url_1)
-        df2 = fetch_data(api_url_2)
+        # self.df1 = fetch_data(api_url_1)
+        # self.df2 = fetch_data(api_url_2)
 
-        if df1 is None or df2 is None:
+        if self.df1 is None or self.df2 is None:
             QMessageBox.critical(self, '오류', '데이터를 가져오는 데 실패했습니다. API URL을 확인해주세요.')
             return
 
-        if join_column1 in df1.columns and join_column2 in df2.columns:
-            self.joined_data = pd.merge(df1, df2, left_on=join_column1, right_on=join_column2, how='inner')
+        if join_column1 in self.df1.columns and join_column2 in self.df2.columns:
+            self.joined_data = pd.merge(self.df1, self.df2, left_on=join_column1, right_on=join_column2, how='inner')
             self.show_data_in_table(self.joined_data)
         else:
             QMessageBox.warning(self, '오류', '조인할 컬럼이 누락되었거나 잘못되었습니다.')
