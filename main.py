@@ -12,8 +12,93 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, 
-    QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QCheckBox, QSizePolicy, QComboBox
+    QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QCheckBox, QSizePolicy, QComboBox, QMainWindow
+    
     )
+class CustomTitleBar(QWidget):
+    def __init__(self, parent=None):
+        super(CustomTitleBar, self).__init__(parent)
+        self.setFixedHeight(35)  # 높이 조정
+        self.parent = parent
+
+        background_color = self.palette().window().color().name()
+        hover_color = "#e0e0e0"
+
+        # 수평 레이아웃 사용
+        layout = QHBoxLayout()
+        layout.setContentsMargins(5, 0, 5, 0)  # 여백 설정
+
+        # 버전 라벨과 버튼 정의
+        self.version_label = QLabel("Version 1.0.0")
+        self.help_button = QPushButton("?")
+        self.minimize_button = QPushButton("ㅡ")
+        self.maximize_button = QPushButton("☐")
+        self.close_button = QPushButton("✕")
+
+        # 버튼 스타일 적용
+        button_style = f"""
+        QPushButton {{
+            background-color: {background_color};
+            border: none;
+        }}
+        QPushButton:hover {{
+            background-color: {hover_color};
+        }}
+        """
+        self.minimize_button.setStyleSheet(button_style)
+        self.maximize_button.setStyleSheet(button_style)
+        self.close_button.setStyleSheet(button_style)
+        self.help_button.setStyleSheet(button_style)
+
+        # 레이아웃에 위젯 추가
+        layout.addWidget(self.version_label)
+        layout.addStretch()  # 중간 공간 추가
+        layout.addWidget(self.help_button)
+        layout.addWidget(self.minimize_button)
+        layout.addWidget(self.maximize_button)
+        layout.addWidget(self.close_button)
+        
+
+        self.setLayout(layout)
+
+        # 시그널과 슬롯 연결
+        self.minimize_button.clicked.connect(self.minimize)
+        self.maximize_button.clicked.connect(self.maximize_restore)
+        self.close_button.clicked.connect(self.close)
+        self.help_button.clicked.connect(self.show_help)
+
+    def mousePressEvent(self, event):
+        # 창 이동을 위한 초기 위치 설정
+        if event.button() == Qt.LeftButton:
+            self.moving = True
+            self.offset = event.pos()
+
+    def mouseMoveEvent(self, event):
+        if self.moving:
+            self.parent.move(event.globalPos() - self.offset)
+
+    def mouseReleaseEvent(self, event):
+        self.moving = False
+
+    def mouseDoubleClickEvent(self, event):
+        self.maximize_restore()
+        
+    def minimize(self):
+        self.parent.showMinimized()
+
+    def maximize_restore(self):
+        if self.parent.isMaximized():
+            self.parent.showNormal()
+        else:
+            self.parent.showMaximized()
+
+    def close(self):
+        self.parent.close()
+
+    def show_help(self):
+        # Implement the function to show help dialog or information
+        QMessageBox.information(self.parent, "Help", "This is the help information.")
+
 
 class ApiCall:
     def __init__(self, key, url):
@@ -255,27 +340,29 @@ class ParameterViewer(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout()
 
-        # 테이블 위젯 생성
         self.param_table = QTableWidget()
         self.param_table.resizeColumnsToContents()
         self.param_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.param_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-
-        # 여기에 선택 모드와 선택 동작 설정 추가
-        self.param_table.setSelectionMode(QAbstractItemView.SingleSelection)  # 한 번에 하나의 항목만 선택
-        self.param_table.setSelectionBehavior(QAbstractItemView.SelectRows)  # 행 단위로 선택
+        self.param_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.param_table.setSelectionBehavior(QAbstractItemView.SelectRows)
 
         self.load_parameters()
         layout.addWidget(self.param_table)
 
-        confirm_button = QPushButton('데이터 불러오기')
+        confirm_button = QPushButton('파라미터 불러오기')
         confirm_button.clicked.connect(self.on_confirm_button_clicked)
         layout.addWidget(confirm_button)
 
+        # Delete button
+        delete_button = QPushButton('파라미터 삭제')
+        delete_button.clicked.connect(self.on_delete_button_clicked)
+        layout.addWidget(delete_button)
+
         self.setLayout(layout)
-        self.resize(800, 600)  # 창의 크기를 너비 800px, 높이 600px로 설정
-        
+        self.resize(800, 600)
         self.param_table.itemDoubleClicked.connect(self.on_table_item_double_clicked)
+    
 
     def load_parameters(self):
          ParameterSaver.load_parameter_list(self.param_table)
@@ -283,6 +370,36 @@ class ParameterViewer(QWidget):
     def on_table_item_double_clicked(self):
         # 더블클릭 이벤트를 처리하기 위해 on_confirm_button_clicked 메서드 호출
         self.on_confirm_button_clicked()
+
+    def on_delete_button_clicked(self):
+        selected_items = self.param_table.selectedItems()
+        if selected_items:
+            selected_row = selected_items[0].row()
+            id_item = self.param_table.item(selected_row, 0)  # Assuming the first column contains the ID for deletion
+            if id_item:
+                id = id_item.text()
+                try:
+                    # Delete the parameter from the database
+                    connection, cursor = ParameterSaver.F_connectPostDB()
+                    if connection is not None and cursor is not None:
+                        # Assuming 'URL_TB' table contains the 'id' column. Adjust if your schema is different.
+                        cursor.execute("DELETE FROM URL_TB WHERE id = ?", (id,))
+                        cursor.execute("DELETE FROM PARAMS_TB WHERE id = ?", (id,))
+                        connection.commit()
+                        
+                        # After successful deletion from the database, remove the row from the table
+                        self.param_table.removeRow(selected_row)
+                        QMessageBox.information(None, '성공', '선택한 파라미터가 성공적으로 삭제되었습니다.')
+                    else:
+                        QMessageBox.critical(None, '에러', '데이터베이스 연결에 실패했습니다.')
+                except sqlite3.Error as e:
+                    QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+                finally:
+                    if connection:
+                        ParameterSaver.F_ConnectionClose()
+        else:
+            QMessageBox.warning(None, '경고', '선택된 행이 없습니다.')
+
 
 
     def on_confirm_button_clicked(self):
@@ -823,33 +940,39 @@ class DataJoinerApp(QWidget):
         else:
             QMessageBox.critical(None, '에러', 'API 데이터를 가져오지 못했습니다.')
 
-class MainApp(QWidget):
+class MainApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.myWidgetApp = None  # MyWidget 인스턴스를 저장할 변수
-        self.dataJoiner = None  # DataJoinerApp 인스턴스를 저장할 변수 추가
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        
+        self.myWidgetApp = None
+        self.dataJoiner = None
         self.initUI()
+        self.setStyleSheet("QMainWindow {background: 'white';}")
     
     def initUI(self):
         self.setWindowTitle('API')
-        self.setGeometry(500,500,200,200)
+        self.setGeometry(500, 500, 500, 500)
         
-        # 버튼 두 개가 있는 수평 레이아웃 생성
+        centralWidget = QWidget()
+        self.setCentralWidget(centralWidget)
+        
         hbox = QVBoxLayout()
-
-        btn1 = QPushButton('API 호출', self)
-        btn1.clicked.connect(self.showMyWidgetApp)  # 버튼 1 클릭 시 showMyWidgetApp 메서드 호출
+        btn1 = QPushButton('API 호출', centralWidget)
+        btn1.clicked.connect(self.showMyWidgetApp)
         
-        btn2 = QPushButton('API && API 병합', self)
-        btn2.clicked.connect(self.showDataJoinerApp)  # 버튼 2 클릭 시 showDataJoinerApp 메서드 호출
+        btn2 = QPushButton('API && API 병합', centralWidget)
+        btn2.clicked.connect(self.showDataJoinerApp)
         
         hbox.addWidget(btn1)
         hbox.addWidget(btn2)
+        
+        centralWidget.setLayout(hbox)
+        
+        # 커스텀 타이틀 바 설정!@!@
+        self.custom_title_bar = CustomTitleBar(self)
+        self.setMenuWidget(self.custom_title_bar)
 
-        # 버튼 레이아웃을 메인 레이아웃에 추가
-        vbox = QVBoxLayout()
-        vbox.addLayout(hbox)
-        self.setLayout(vbox)
 
     def showMyWidgetApp(self):
         if self.myWidgetApp is None:  # MyWidget 인스턴스가 없으면 생성
