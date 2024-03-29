@@ -705,11 +705,13 @@ class DataJoinerApp(QWidget):
         layout = QVBoxLayout()
 
         self.api_url1_edit = QLineEdit(self)
+        self.api_url1_edit.setReadOnly(True)
         self.select_button1 = QPushButton('URL1 선택', self)
         # URL1 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button1.clicked.connect(lambda: self.show_parameters('api_url1_edit'))
         
         self.api_url2_edit = QLineEdit(self)
+        self.api_url2_edit.setReadOnly(True)
         self.select_button2 = QPushButton('URL2 선택', self)
         # URL2 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button2.clicked.connect(lambda: self.show_parameters('api_url2_edit'))
