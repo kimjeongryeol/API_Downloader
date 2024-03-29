@@ -268,7 +268,7 @@ class ParameterViewer(QWidget):
         self.load_parameters()
         layout.addWidget(self.param_table)
 
-        confirm_button = QPushButton('파라미터 불러오기')
+        confirm_button = QPushButton('데이터 불러오기')
         confirm_button.clicked.connect(self.on_confirm_button_clicked)
         layout.addWidget(confirm_button)
 
