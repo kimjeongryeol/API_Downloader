@@ -832,7 +832,7 @@ class MainApp(QWidget):
     
     def initUI(self):
         self.setWindowTitle('API')
-        self.setGeometry(500,500,200,200)
+        self.setGeometry(500,500,500,500)
         
         # 버튼 두 개가 있는 수평 레이아웃 생성
         hbox = QVBoxLayout()
