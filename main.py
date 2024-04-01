@@ -4,9 +4,8 @@ import sys
 import xml.etree.ElementTree as ET
 import pandas as pd
 import requests
-import shutil
 import os
-from datetime import datetime
+import winreg as reg
 from urllib.parse import parse_qs, urlparse
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -131,6 +130,108 @@ class ApiCall:
         cache_key = response.url
         self.cache.set(cache_key, response)  # Cache the successful response
     
+        
+class RegistryManager:
+    def __init__(self):
+        self.reg_path = r"Software\Kwater\APIDOWNLOADER"
+        self.backup_reg_path = r"Software\Kwater\APIDOWNLOADER\Backup"
+        self.recent_entries_max = 10  # 최근 10개의 항목을 추적하기 위한 크기 지정
+        self.load_settings()  # 인스턴스가 생성될 때 설정을 불러오도록 수정합니다.
+
+    def load_settings(self):
+        """레지스트리에서 설정을 로드합니다."""
+        settings = {}
+        try:
+            with reg.OpenKey(reg.HKEY_CURRENT_USER, self.reg_path, 0, reg.KEY_READ) as key:
+                for i in range(self.recent_entries_max):
+                    try:
+                        id_val = reg.QueryValueEx(key, f"ID_{i}")[0]
+                        url_val = reg.QueryValueEx(key, f"URL_{i}")[0]
+                        settings[f"ID_{i}"] = id_val
+                        settings[f"URL_{i}"] = url_val
+                    except WindowsError as e:
+                        print(f"Error reading registry for index {i}: {e}")
+                        break  # 레지스트리 값이 더 이상 없으면 반복문 종료
+        except FileNotFoundError:
+            print("레지스트리 경로를 찾을 수 없습니다.")
+        except Exception as e:
+            print(f"레지스트리 로딩 중 오류 발생: {e}")
+        return settings
+
+    def save_settings(self, id_url_list):
+        """설정을 레지스트리에 저장합니다."""
+        try:
+            # 새로운 값 맨 앞에 추가하고, 기존의 값들을 뒤로 밀어내기
+            new_id, new_url = id_url_list[0]  # 새로운 값
+            with reg.CreateKey(reg.HKEY_CURRENT_USER, self.reg_path) as key:
+                # 기존 값들을 하나씩 뒤로 밀기
+                for i in range(self.recent_entries_max - 2, -1, -1):
+                    try:
+                        # 현재 값 읽기
+                        current_id = reg.QueryValueEx(key, f"ID_{i}")[0]
+                        current_url = reg.QueryValueEx(key, f"URL_{i}")[0]
+                        # 다음 위치로 이동
+                        reg.SetValueEx(key, f"ID_{i+1}", 0, reg.REG_SZ, current_id)
+                        reg.SetValueEx(key, f"URL_{i+1}", 0, reg.REG_SZ, current_url)
+                    except WindowsError:
+                        continue  # 이전 값이 없는 경우 건너뛰기
+                
+                # 새로운 값 맨 앞에 저장
+                reg.SetValueEx(key, "ID_0", 0, reg.REG_SZ, new_id)
+                reg.SetValueEx(key, "URL_0", 0, reg.REG_SZ, new_url)
+                
+        except Exception as e:
+            print(f"Settings saving error: {e}")
+
+    def recover_param_db_from_registry(self, db_path):
+        """레지스트리 백업에서 param_db 파일의 데이터를 복구합니다."""
+        try:
+            # 데이터베이스 파일 생성
+            if not os.path.exists(db_path):
+                open(db_path, 'a').close()
+            
+            db_connection = sqlite3.connect(db_path)
+            db_cursor = db_connection.cursor()
+            
+            # 필요한 테이블 생성
+            db_cursor.execute('''
+                CREATE TABLE IF NOT EXISTS URL_TB (
+                    id TEXT PRIMARY KEY,
+                    url TEXT NOT NULL
+                )''')
+            db_cursor.execute('''
+                CREATE TABLE IF NOT EXISTS PARAMS_TB (
+                    id TEXT,
+                    param TEXT,
+                    FOREIGN KEY (id) REFERENCES URL_TB(id)
+                )''')
+            db_connection.commit()
+            
+            with reg.OpenKey(reg.HKEY_CURRENT_USER, self.reg_path, 0, reg.KEY_READ) as key:
+                for i in range(10):  # 레지스트리에서 데이터를 읽는 로직
+                    try:
+                        id_val, _ = reg.QueryValueEx(key, f"ID_{i}")
+                        url_val, _ = reg.QueryValueEx(key, f"URL_{i}")
+
+                        # 중복 검사
+                        db_cursor.execute("SELECT COUNT(*) FROM URL_TB WHERE id = ?", (id_val,))
+                        if db_cursor.fetchone()[0] == 0:
+                            # id가 중복되지 않는 경우에만 삽입
+                            db_cursor.execute("INSERT INTO URL_TB (id, url) VALUES (?, ?)", (id_val, url_val))
+                        else:
+                            # 중복된 id가 있는 경우, 데이터 업데이트 또는 다른 처리를 수행
+                            pass
+                        db_connection.commit()
+                    except WindowsError:
+                        break
+                        
+            db_cursor.close()
+            db_connection.close()
+            QMessageBox.information(None, "복구 성공", "데이터베이스가 성공적으로 복구되었습니다.")
+            
+        except Exception as e:
+            QMessageBox.critical(None, "복구 실패", f"데이터베이스 복구 중 오류 발생: {e}")
+
 class ParameterSaver:
     db_connection = None
     db_cursor = None
@@ -142,47 +243,45 @@ class ParameterSaver:
     @staticmethod
     def F_connectPostDB():
         db_path = 'params_db.sqlite'
-        backup_folder = './backups'
-
-        # Use the BackUp class to check for database corruption
-        while True:
-            if BackUp.is_database_corrupted(db_path):
-                reply = QMessageBox.question(None, '데이터베이스 이상 발생!', '데이터 손상! 디비를 복구 하시겠습니까?',
-                                             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-                if reply == QMessageBox.Yes:
-                    if not BackUp.recover_database(db_path, backup_folder):
-                        QMessageBox.critical(None, '복구 실패', '데이터베이스 복구에 실패했습니다. 백업 파일이 없을 수 있습니다.')
-                        # Here, consider if you want to exit or allow another attempt
-                        return None
-                    else:
-                        break  # Recovery successful, break out of the loop
+        
+        if not os.path.exists(db_path):
+            reply = QMessageBox.question(None, '데이터베이스 손상!', '데이터베이스 손상! 복구하시겠습니까?',
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                                         
+            if reply == QMessageBox.No:
+                secondaryReply = QMessageBox.question(None, '주의', '복구하지 않으면 저장된 데이터는 모두 소실됩니다. 정말 복구하지 않겠습니까?',
+                                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                                                      
+                if secondaryReply == QMessageBox.No:
+                    # 사용자가 최종적으로 복구를 선택한 경우
+                    ParameterSaver.recover_database(db_path)
                 else:
-                    secondaryReply = QMessageBox.question(None, '주의', '복구하지 않으면 저장된 데이터는 모두 삭제 될 수 있습니다. 정말복구하지 않겠습니까?',
-                                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                    if secondaryReply == QMessageBox.Yes:
-                        break  # User chose to continue without recovery, break out of the loop
-                    # If user selects "No", the loop will continue and re-prompt for recovery
+                    # 사용자가 복구를 원하지 않는 경우, 빈 파일 생성
+                    open(db_path, 'a').close()
             else:
-                break  # No corruption detected, proceed
-
-        if ParameterSaver.db_connection is None:
-            try:
-                ParameterSaver.db_connection = sqlite3.connect(db_path)
-                ParameterSaver.db_cursor = ParameterSaver.db_connection.cursor()
-                print("SQLite 데이터베이스 연결 성공!")
+                # 복구를 선택한 경우
+                ParameterSaver.recover_database(db_path)
                 
-                # Backup the database after successful connection
-                BackUp.backup_database(db_path)
-
-                # Ensure the required tables exist
-                ParameterSaver.ensure_database_schema()
-
-            except sqlite3.Error as error:
-                print("SQLite 연결 오류: ", error)
-                QMessageBox.critical(None, 'SQLite 연결 오류', "데이터베이스 연결에 실패했습니다.")
-                return None  # Return None to indicate failure to connect
+        # 데이터베이스 연결 시도 및 스키마 초기화
+        try:
+            ParameterSaver.db_connection = sqlite3.connect(db_path)
+            ParameterSaver.db_cursor = ParameterSaver.db_connection.cursor()
+            ParameterSaver.ensure_database_schema()
+        except sqlite3.Error as error:
+            QMessageBox.critical(None, 'SQLite 연결 오류', "데이터베이스 연결에 실패했습니다.")
+            return None, None
 
         return ParameterSaver.db_connection, ParameterSaver.db_cursor
+
+    @staticmethod
+    def recover_database(db_path):
+        registry_manager = RegistryManager()
+        try:
+            registry_manager.recover_param_db_from_registry(db_path)
+        except Exception as e:
+            QMessageBox.critical(None, '복구 실패', f'복구 중 오류 발생: {e}')
+            # 복구 실패 후에도 연결 시도를 계속하기 위해 빈 파일 생성
+            open(db_path, 'a').close()
     
     def ensure_database_schema():
         # Assuming your schema creation logic is here
@@ -275,33 +374,7 @@ class ParameterSaver:
         finally:
             ParameterSaver.F_ConnectionClose()
 
-class BackUp:
-    def backup_database(db_path):
-        if not os.path.exists('./backups'):
-            os.makedirs('./backups')
-        backup_path = f"./backups/{os.path.basename(db_path)}_{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
-        shutil.copy(db_path, backup_path)
-        print(f"Database backed up to {backup_path}")
 
-    def is_database_corrupted(db_path):
-        # Placeholder for actual corruption detection. Currently checks existence.
-        return not os.path.exists(db_path)
-
-    def recover_database(db_path, backup_folder):
-        backups = sorted([f for f in os.listdir(backup_folder) if f.startswith(os.path.basename(db_path)) and f.endswith(".bak")],
-                        reverse=True)
-        if backups:
-            latest_backup = os.path.join(backup_folder, backups[0])
-            try:
-                shutil.copy(latest_backup, db_path)
-                print("Database successfully recovered from backup.")
-                return True
-            except Exception as e:
-                print(f"Failed to recover database: {e}")
-        else:
-            print("No backup found for recovery.")
-        return False
-        
 
 class PreviewUpdater:
     @staticmethod
@@ -436,7 +509,6 @@ class ParameterViewer(QWidget):
                         connection, cursor = ParameterSaver.F_connectPostDB()
                         cursor.execute("SELECT param FROM PARAMS_TB WHERE id = ?", (id,))
                         rows = cursor.fetchall()
-
                         self.widget_instance.api_input.setText(rows[0][0])
                         
                         parameters = {}
@@ -722,6 +794,14 @@ class MyWidget(QWidget):
             if ok:
                 parameter_saver = ParameterSaver(id, self.origin_data.url)
                 parameter_saver.save_parameters()
+                try:
+                        manager = RegistryManager()
+                        id_url_list = [(id, self.origin_data.url)]
+                        manager.save_settings(id_url_list)
+                        settings = manager.load_settings()
+                        print("레지스트리에 저장된 설정:", settings)
+                except Exception as e:
+                    QMessageBox.critical(None, '에러', f'레지스트리에 설정을 저장하는 도중 오류가 발생했습니다: {e}')
         else:
             QMessageBox.critical(None, '에러', '먼저 API를 호출하세요.')
             return
@@ -961,6 +1041,9 @@ class MainApp(QMainWindow):
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.api_cache = APICache()
+
+        self.registry_manager = RegistryManager()
+        self.settings = self.registry_manager.load_settings()
         self.myWidgetApp = None
         self.dataJoiner = None
         self.initUI()
