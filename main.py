@@ -208,19 +208,25 @@ class RegistryManager:
             db_connection.commit()
             
             with reg.OpenKey(reg.HKEY_CURRENT_USER, self.reg_path, 0, reg.KEY_READ) as key:
-                for i in range(10):  # 레지스트리에서 데이터를 읽는 로직
+                for i in range(10):
                     try:
                         id_val, _ = reg.QueryValueEx(key, f"ID_{i}")
                         url_val, _ = reg.QueryValueEx(key, f"URL_{i}")
 
-                        # 중복 검사
-                        db_cursor.execute("SELECT COUNT(*) FROM URL_TB WHERE id = ?", (id_val,))
-                        if db_cursor.fetchone()[0] == 0:
-                            # id가 중복되지 않는 경우에만 삽입
-                            db_cursor.execute("INSERT INTO URL_TB (id, url) VALUES (?, ?)", (id_val, url_val))
-                        else:
-                            # 중복된 id가 있는 경우, 데이터 업데이트 또는 다른 처리를 수행
-                            pass
+                        # URL_TB에 데이터 삽입
+                        db_cursor.execute("INSERT OR IGNORE INTO URL_TB (id, url) VALUES (?, ?)", (id_val, url_val))
+                        
+                        # URL에서 파라미터 추출하여 PARAMS_TB에 삽입
+                        parsed_url = urlparse(url_val)
+                        api_url = parsed_url.scheme + "://" + parsed_url.netloc + parsed_url.path
+                        # API 기본 URL을 PARAMS_TB에 저장. 여기에서 api_url= 접두사를 제거합니다.
+                        db_cursor.execute("INSERT INTO PARAMS_TB (id, param) VALUES (?, ?)", (id_val, api_url))
+                        
+                        query_params = parse_qs(parsed_url.query)
+                        for param, values in query_params.items():
+                            for value in values:
+                                db_cursor.execute("INSERT INTO PARAMS_TB (id, param) VALUES (?, ?)", (id_val, f"{param}={value}"))
+                        
                         db_connection.commit()
                     except WindowsError:
                         break
@@ -503,7 +509,8 @@ class ParameterViewer(QWidget):
                     self.widget_instance.preview_table.setColumnCount(0)
 
                     id_item = self.param_table.item(selected_row, 0)
-                    id = id_item.text()
+                    if id_item:
+                        id = id_item.text()
 
                     try:
                         connection, cursor = ParameterSaver.F_connectPostDB()
