@@ -238,7 +238,6 @@ class ParameterSaver:
 
             QMessageBox.information(None, '성공', 'URL 및 파라미터가 성공적으로 저장되었습니다.')
         except sqlite3.Error as e:
-            print(f"에러 발생: {e}")
             QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
         finally:
             self.F_ConnectionClose()
@@ -335,7 +334,6 @@ class APICache:
                 del self.cache[oldest_key]
             self.keys.append(key)
         self.cache[key] = value
-        print(self.cache)
 
     def clear(self):
         """캐시 초기화"""
@@ -469,7 +467,7 @@ class ParameterViewer(QWidget):
                         self.widget_instance.join_column2_combobox.addItems(self.widget_instance.df2.columns)
                 self.close()
         else:
-            print("선택된 행이 없습니다.")
+            QMessageBox.information(None, '알림', '선택된 행이 없습니다.')
 
 class MyWidget(QWidget):
     def __init__(self, api_cache):
@@ -775,8 +773,9 @@ class DataDownload:
         try:
             with open(file_path, 'w', encoding='utf-8') as file:
                 file.write(data)
-            print("XML 파일 저장 성공")
+            QMessageBox.information(None, '알림', 'XML 파일 저장 성공!')
         except Exception as e:
+            QMessageBox.information(None, '알림', 'XML 파일 저장 실패!')
             print("XML 파일 저장 실패:", e)
 
     def save_csv(self, file_path):
