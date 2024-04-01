@@ -486,8 +486,6 @@ class ParameterViewer(QWidget):
         else:
             QMessageBox.warning(None, '경고', '선택된 행이 없습니다.')
 
-
-
     def on_confirm_button_clicked(self):
         selected_items = self.param_table.selectedItems()
         if selected_items:
@@ -570,6 +568,7 @@ class MyWidget(QWidget):
 
         self.api_label = QLabel('API URL')
         self.api_input = EnterLineEdit(self)
+        self.api_input.setToolTip('서비스URL을 입력하세요.')
         self.add_param_to_layout(self.fixed_layout, self.api_label, self.api_input)
 
         self.key_label = QLabel('serviceKey')
@@ -658,6 +657,7 @@ class MyWidget(QWidget):
 
             param_label = QLabel(display_name)
             param_input = EnterLineEdit(self)
+            param_input.setToolTip('요청변수를 입력하세요')
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
 
