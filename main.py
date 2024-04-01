@@ -101,22 +101,35 @@ class CustomTitleBar(QWidget):
 
 
 class ApiCall:
-    def __init__(self, key, url):
-        self.key = key
-        self.url = url
+    def __init__(self, api_cache):
+        self.cache = api_cache  # APICache 인스턴스를 인스턴스 변수로 저장합니다.
 
-    def call(self, **kwargs):
-        params = {'dataType': 'XML'}
-        params['serviceKey'] = self.key
+    def call_params(self, key, url, **kwargs):
+        params = {'dataType': 'XML', 'serviceKey': key}
 
-        for key in kwargs.keys():
-                params[key] = kwargs[key]
+        for v in kwargs.keys():
+            params[v] = kwargs[v]
         try:
-            response =  requests.get(self.url, params=params)
+            response =  requests.get(url, params=params)
+            self.save_cache(response)
             return response
         except requests.exceptions.RequestException as e:
-            QMessageBox.critical(None, '에러', f"호출 중 오류 발생: {e}")
+            QMessageBox.critical(None, '에러', '호출 중 오류 발생! 응답 상태 코드: ' + str(response.status_code))
             return None
+        
+    def call_with_url(self, url):
+        try:
+            response =  requests.get(url)
+            self.save_cache(response)
+            return response
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(None, '에러', '호출 중 오류 발생! 응답 상태 코드: ' + str(response.status_code))
+            return None
+          
+    def save_cache(self, response):
+        # API 호출 결과를 캐시에 저장
+        cache_key = response.url
+        self.cache.set(cache_key, response)  # Cache the successful response
     
 class ParameterSaver:
     db_connection = None
@@ -322,6 +335,7 @@ class APICache:
                 del self.cache[oldest_key]
             self.keys.append(key)
         self.cache[key] = value
+        print(self.cache)
 
     def clear(self):
         """캐시 초기화"""
@@ -329,8 +343,9 @@ class APICache:
         self.keys.clear()
 
 class ParameterViewer(QWidget):
-    def __init__(self, widget_instance, parent_widget_type, target_url_field="api_url1_edit"):
+    def __init__(self, widget_instance, api_cache, parent_widget_type, target_url_field="api_url1_edit"):
         super().__init__()
+        self.api_cache = api_cache
         self.widget_instance = widget_instance
         self.parent_widget_type = parent_widget_type
         self.target_url_field = target_url_field  # 추가된 인자
@@ -441,14 +456,15 @@ class ParameterViewer(QWidget):
                     finally:
                         ParameterSaver.F_ConnectionClose()
                 elif self.parent_widget_type == "DataJoinerApp":
+                    api_caller = ApiCall(self.api_cache)
                     if self.target_url_field == "api_url1_edit":
                         self.widget_instance.api_url1_edit.setText(url)
-                        self.widget_instance.df1 = fetch_data(url)
+                        self.widget_instance.df1 = fetch_data(api_caller.call_with_url(url).text)
                         self.widget_instance.join_column1_combobox.clear()
                         self.widget_instance.join_column1_combobox.addItems(self.widget_instance.df1.columns)
                     elif self.target_url_field == "api_url2_edit":
                         self.widget_instance.api_url2_edit.setText(url)
-                        self.widget_instance.df2 = fetch_data(url)
+                        self.widget_instance.df2 = fetch_data(api_caller.call_with_url(url).text)
                         self.widget_instance.join_column2_combobox.clear()
                         self.widget_instance.join_column2_combobox.addItems(self.widget_instance.df2.columns)
                 self.close()
@@ -456,7 +472,7 @@ class ParameterViewer(QWidget):
             print("선택된 행이 없습니다.")
 
 class MyWidget(QWidget):
-    def __init__(self):
+    def __init__(self, api_cache):
         super().__init__()
         self.df_data = pd.DataFrame() # 데이터 프레임?!!?
         self.origin_data = None
@@ -468,7 +484,7 @@ class MyWidget(QWidget):
         self.param_grid_col = 0  # 변경: 첫 번째 파라미터부터 첫 번째 열에 배치
         self.max_cols = 3  # 한 행에 최대 파라미터 개수
         self.setup()  # UI 설정
-        self.apiCache = APICache()
+        self.api_cache = api_cache
 
     def setup(self):
         self.setWindowTitle('API 다운로더')
@@ -677,36 +693,29 @@ class MyWidget(QWidget):
 
     def api_call(self):
         url = self.api_input.text()
-        service_key = self.key_input.text()
+        key = self.key_input.text()
 
         if not url:
             QMessageBox.critical(None, '에러', "URL을 입력하세요.")
             return None
-        elif not service_key:
+        elif not key:
             QMessageBox.critical(None, '에러', '서비스 키를 입력하세요.')
             return None
 
         try:
             # ApiCall 객체 생성 및 API 호출
-            api_caller = ApiCall(key=service_key, url=url)
+            api_caller = ApiCall(self.api_cache)
             params = self.get_parameters()
-            response = api_caller.call(serviceKey=service_key, **params)
+            response = api_caller.call_params(key=key, url=url, **params)
 
             if response is not None and response.status_code == 200:  # Assuming 'response' has a 'status_code' attribute
                 # Process and display the data
                 self.origin_data = response
-                self.df_data = fetch_data(response.url)
+                self.df_data = fetch_data(response.text)
                 if not self.df_data.empty:
                     PreviewUpdater.show_preview(self.preview_table, self.df_data)
-
-                # Update the cache after confirming the API call was successful
-                cache_key = url + '?' + '&'.join([f'{k}={v}' for k, v in params.items()])
-                self.apiCache.set(cache_key, response)  # Cache the successful response
-                print("API 호출 결과를 캐시에 저장:", cache_key)
-            else:
-                QMessageBox.critical(self, 'API 호출 실패', 'API 호출에 실패했습니다. 응답 상태 코드: ' + str(response.status_code))
         except Exception as e:
-            QMessageBox.critical(self, 'API 호출 예외', f'예외 발생: {e}')
+            pass
 
     def download_parameters(self):
 
@@ -726,7 +735,7 @@ class MyWidget(QWidget):
         self.preview_table.setColumnCount(0)
         
         # Instantiate and show the ParameterViewer
-        self.parameter_viewer = ParameterViewer(self, "MyWidget")
+        self.parameter_viewer = ParameterViewer(self, self.api_cache, "MyWidget")
         self.parameter_viewer.show()
 
     def download_data(self):
@@ -795,9 +804,8 @@ class DataDownload:
         except Exception as e:
             print("엑셀 파일 저장 실패:", e)
                 
-def fetch_data(api_url):
-    response = requests.get(api_url)
-    data = parse_xml_to_dict(response.text)
+def fetch_data(xml_data):
+    data = parse_xml_to_dict(xml_data)
     df = pd.DataFrame(data)
     return df
 
@@ -824,9 +832,10 @@ def parse_xml_to_dict(xml_data):
     return data_list
 
 class DataJoinerApp(QWidget):
-    def __init__(self):
+    def __init__(self, api_cache):
         super().__init__()
         self.initUI()
+        self.api_cache = api_cache
         self.df1 = None
         self.df2 = None
         self.joined_data = None
@@ -880,7 +889,7 @@ class DataJoinerApp(QWidget):
         self.setLayout(layout)
 
     def show_parameters(self, target_field):
-        self.parameter_viewer = ParameterViewer(self, "DataJoinerApp", target_url_field=target_field)
+        self.parameter_viewer = ParameterViewer(self, self.api_cache, "DataJoinerApp", target_url_field=target_field)
         self.parameter_viewer.show()
 
 
@@ -952,7 +961,7 @@ class MainApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
-        
+        self.api_cache = APICache()
         self.myWidgetApp = None
         self.dataJoiner = None
         self.initUI()
@@ -984,12 +993,12 @@ class MainApp(QMainWindow):
 
     def showMyWidgetApp(self):
         if self.myWidgetApp is None:  # MyWidget 인스턴스가 없으면 생성
-            self.myWidgetApp = MyWidget()  # 이 부분을 MyWidget()으로 수정
+            self.myWidgetApp = MyWidget(self.api_cache)  # 이 부분을 MyWidget()으로 수정
         self.myWidgetApp.show()  # MyWidget 표시
 
     def showDataJoinerApp(self):
         if self.dataJoiner is None:  # DataJoinerApp 인스턴스가 없으면 생성
-            self.dataJoiner = DataJoinerApp()
+            self.dataJoiner = DataJoinerApp(self.api_cache)
         self.dataJoiner.show()  # DataJoinerApp 표시
 
 if __name__ == '__main__':
