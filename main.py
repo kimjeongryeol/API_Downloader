@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, 
+    QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, QDialog, QTextEdit,
     QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QCheckBox, QSizePolicy, QComboBox, QMainWindow
     
     )
@@ -23,6 +23,8 @@ class CustomTitleBar(QWidget):
         background_color = self.palette().window().color().name()
         hover_color = "#e0e0e0"
 
+        self.setStyleSheet(f"background-color: {background_color};")
+
         # 수평 레이아웃 사용
         layout = QHBoxLayout()
         layout.setContentsMargins(5, 0, 5, 0)  # 여백 설정
@@ -33,6 +35,10 @@ class CustomTitleBar(QWidget):
         self.minimize_button = QPushButton("ㅡ")
         self.maximize_button = QPushButton("☐")
         self.close_button = QPushButton("✕")
+        self.help_button.setToolTip("도움말")  # 도움말 툴팁 추가
+        self.minimize_button.setToolTip("최소화")  # 최소화 툴팁 추가
+        self.maximize_button.setToolTip("최대화")  # 최대화 툴팁 추가
+        self.close_button.setToolTip("닫기")  # 닫기 툴팁 추가
 
         # 버튼 스타일 적용
         button_style = f"""
@@ -95,8 +101,59 @@ class CustomTitleBar(QWidget):
         self.parent.close()
 
     def show_help(self):
-        # Implement the function to show help dialog or information
-        QMessageBox.information(self.parent, "Help", "This is the help information.")
+        help_dialog = HelpDialog(self)
+        help_dialog.exec_()
+
+class HelpDialog(QDialog):
+    def __init__(self, parent=None):
+        super(HelpDialog, self).__init__(parent)
+        self.setWindowTitle("도움말")
+        self.resize(600, 400)
+        layout = QVBoxLayout()
+
+        help_text = """
+이 프로그램은 API를 호출하고 API간 병합을 도와주는 프로그램 입니다.
+
+기능:
+
+- API 호출: API_URL과 서비스 키 값 그리고 여러 요청 변수들을 입력받아 사용자가 원하는 데이터를 호출하여 파일로 저장하게 도와줍니다.
+
+- API & API 병합: 2개의 호출된 데이터를 바탕으로 사용자가 원하는 새 데이터를 만들어 줍니다. 조인은 같은 내용을 바탕으로 한 칼럼끼리만 가능합니다.
+
+- 캐시 기반 데이터 호출 및 조인을 지원하여 최근 불러온 데이터는 더 빠르게 불러올 수 있습니다.
+
+- 레지스트리 기반 데이터 저장을 지원합니다. sqlite파일이 제거되어도 최신 10개의 데이터는 유지됩니다.
+
+사용 방법:
+
+1. API 호출을 위해 먼저 API 주소, 서비스 키 값을 입력합니다.
+
+2. 데이터 입력시 요청변수와 해당 값들을 추가/제거하여 입력합니다.
+
+3. OpenAPI 호출 버튼을 눌러 API를 호출하고, 결과 데이터를 확인합니다.
+
+4. 호출된 데이터를 저장하고 싶다면 원하는 형식을 선택하여 저장합니다.
+
+API & API 병합을 위해:
+
+1. 병합하고 싶은 데이터를 입력합니다. 이전에 호출 목록에서 저장된 데이터만 가능합니다.
+
+2. 병합하고 싶은 데이터들간의 기준을 설정합니다.
+
+3. 데이터 조인을 통해 새로운 데이터를 생성합니다.
+"""
+        
+        self.help_text_edit = QTextEdit()
+        self.help_text_edit.setText(help_text)
+        self.help_text_edit.setReadOnly(True)
+        
+        layout.addWidget(self.help_text_edit)
+        
+        close_button = QPushButton("닫기")
+        close_button.clicked.connect(self.accept)
+        layout.addWidget(close_button)
+        
+        self.setLayout(layout)
 
 
 class ApiCall:
@@ -561,6 +618,7 @@ class MyWidget(QWidget):
         self.param_grid_col = 0  # 변경: 첫 번째 파라미터부터 첫 번째 열에 배치
         self.max_cols = 3  # 한 행에 최대 파라미터 개수
         self.setup()  # UI 설정
+        self.setWindowFlags(Qt.FramelessWindowHint)
         self.api_cache = api_cache
 
     def setup(self):
@@ -570,18 +628,23 @@ class MyWidget(QWidget):
         font.setPointSize(10)
         self.setFont(font)
 
-        main_layout = QVBoxLayout()
+        main_layout = QVBoxLayout()  # 먼저 메인 레이아웃을 생성합니다.
+
+        self.custom_title_bar = CustomTitleBar(self)  # 사용자 정의 타이틀 바 인스턴스 생성 및 추가
+        main_layout.addWidget(self.custom_title_bar)  # 여기서 메인 레이아웃에 추가합니다.
 
         self.fixed_layout = QVBoxLayout()
         main_layout.addLayout(self.fixed_layout)
 
         self.api_label = QLabel('API URL')
-        self.api_input = EnterLineEdit(self)
+        self.api_input = QLineEdit(self)  # EnterLineEdit를 QLineEdit으로 변경했습니다. EnterLineEdit 정의가 필요합니다.
         self.add_param_to_layout(self.fixed_layout, self.api_label, self.api_input)
+        self.api_input.setToolTip("API의 URL을 입력하세요.")
 
         self.key_label = QLabel('serviceKey')
-        self.key_input = EnterLineEdit(self)
+        self.key_input = QLineEdit(self)  # EnterLineEdit를 QLineEdit으로 변경했습니다. EnterLineEdit 정의가 필요합니다.
         self.add_param_to_layout(self.fixed_layout, self.key_label, self.key_input)
+        self.key_input.setToolTip("서비스 키를 입력하세요.")
 
         self.param_grid_layout = QGridLayout()
         main_layout.addLayout(self.param_grid_layout)
@@ -589,21 +652,27 @@ class MyWidget(QWidget):
 
         self.add_param_button = QPushButton('파라미터 추가', self)
         self.add_param_button.clicked.connect(self.add_parameter)
+        self.add_param_button.setToolTip("요청 변수를 추가합니다.")
 
         self.remove_param_button = QPushButton('파라미터 삭제', self)
         self.remove_param_button.clicked.connect(self.remove_parameter)
+        self.remove_param_button.setToolTip("요청 변수를 제거합니다.")
 
-        self.download_params_button = QPushButton('파라미터 저장', self)
+        self.download_params_button = QPushButton('호출 주소 저장', self)
         self.download_params_button.clicked.connect(self.download_parameters)
 
-        self.show_params_button = QPushButton('파라미터 목록', self)
+        self.show_params_button = QPushButton('호출 주소 목록', self)
         self.show_params_button.clicked.connect(self.show_parameters)
+        self.show_params_button.setToolTip("저장된 데이터 url값을 확인하고 불러옵니다.")
 
         self.call_button = QPushButton('OpenAPI 호출', self)
         self.call_button.clicked.connect(self.api_call)
+        self.call_button.setToolTip("입력된 API와 요청 변수를 바탕으로 API를 호출합니다.")
+
 
         self.download_button = QPushButton('API 호출정보 저장', self)
         self.download_button.clicked.connect(self.download_data)
+        self.download_button.setToolTip("호출된 API data를 다운로드 합니다.")
 
         button_layout1 = QHBoxLayout()
         button_layout1.addWidget(self.show_params_button)
@@ -937,12 +1006,15 @@ class DataJoinerApp(QWidget):
         self.select_button1 = QPushButton('URL1 선택', self)
         # URL1 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button1.clicked.connect(lambda: self.show_parameters('api_url1_edit'))
+        self.select_button1.setToolTip("조인할 첫 번째 데이터를 선택하세요.")
+
 
         self.api_url2_edit = QLineEdit(self)
         self.api_url2_edit.setReadOnly(True)
         self.select_button2 = QPushButton('URL2 선택', self)
         # URL2 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button2.clicked.connect(lambda: self.show_parameters('api_url2_edit'))
+        self.select_button2.setToolTip("조인할 두 번째 데이터를 선택하세요.")
 
         # UI 구성
         layout.addWidget(QLabel('첫 번째 API 주소:'))
@@ -971,7 +1043,8 @@ class DataJoinerApp(QWidget):
         self.save_btn = QPushButton('파일 저장', self)
         self.save_btn.clicked.connect(self.download)
         layout.addWidget(self.save_btn)
-
+        
+        
         self.setLayout(layout)
 
     def show_parameters(self, target_field):
@@ -1075,7 +1148,7 @@ class MainApp(QMainWindow):
         
         centralWidget.setLayout(hbox)
         
-        # 커스텀 타이틀 바 설정!@!@
+        # 커스텀 타이틀 바 설정
         self.custom_title_bar = CustomTitleBar(self)
         self.setMenuWidget(self.custom_title_bar)
 
