@@ -636,6 +636,7 @@ class MyWidget(QWidget):
 
         self.api_label = QLabel('API URL')
         self.api_input = EnterLineEdit(self)
+        self.api_input.setToolTip('서비스URL을 입력하세요.')
         self.add_param_to_layout(self.fixed_layout, self.api_label, self.api_input)
         self.api_input.setToolTip("API의 URL을 입력하세요.")
 
@@ -732,6 +733,7 @@ class MyWidget(QWidget):
 
             param_label = QLabel(display_name)
             param_input = EnterLineEdit(self)
+            param_input.setToolTip('요청변수를 입력하세요')
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
 
