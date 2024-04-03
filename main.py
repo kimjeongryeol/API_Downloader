@@ -695,6 +695,14 @@ class MyWidget(QWidget):
 
         self.setLayout(main_layout)
 
+    def onTextChanged(self):
+        # input 텍스트가 변경되면 api_data를 None으로 설정
+        self.df_data = pd.DataFrame()
+        self.origin_data = None
+        self.preview_table.clearContents()  # 셀 내용 비우기
+        self.preview_table.setRowCount(0)  # 행 수 초기화
+        self.preview_table.setColumnCount(0)  # 열 수 초기화
+
     def add_param_to_layout(self, layout, label_widget, edit_widget, checkbox_widget=None):
         h_layout = QHBoxLayout()
         if checkbox_widget:
@@ -705,6 +713,7 @@ class MyWidget(QWidget):
         else:
             label_widget.setMinimumWidth(100)
             label_widget.setMaximumWidth(100)
+        edit_widget.textChanged.connect(self.onTextChanged)
         h_layout.addWidget(label_widget)
         h_layout.addWidget(edit_widget)
         #h_layout.setSpacing(10)
@@ -777,6 +786,7 @@ class MyWidget(QWidget):
             param_label.setMinimumWidth(130)
             param_label.setMaximumWidth(130)
             param_input = EnterLineEdit(self)
+            param_input.textChanged.connect(self.onTextChanged)
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
             param_input.setText(value)
