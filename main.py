@@ -549,8 +549,6 @@ class ParameterViewer(QWidget):
         else:
             QMessageBox.warning(None, '경고', '선택된 행이 없습니다.')
 
-
-
     def on_confirm_button_clicked(self):
         selected_items = self.param_table.selectedItems()
         if selected_items:
@@ -637,12 +635,12 @@ class MyWidget(QWidget):
         main_layout.addLayout(self.fixed_layout)
 
         self.api_label = QLabel('API URL')
-        self.api_input = QLineEdit(self)  # EnterLineEdit를 QLineEdit으로 변경했습니다. EnterLineEdit 정의가 필요합니다.
+        self.api_input = EnterLineEdit(self)
         self.add_param_to_layout(self.fixed_layout, self.api_label, self.api_input)
         self.api_input.setToolTip("API의 URL을 입력하세요.")
 
         self.key_label = QLabel('serviceKey')
-        self.key_input = QLineEdit(self)  # EnterLineEdit를 QLineEdit으로 변경했습니다. EnterLineEdit 정의가 필요합니다.
+        self.key_input = EnterLineEdit(self)
         self.add_param_to_layout(self.fixed_layout, self.key_label, self.key_input)
         self.key_input.setToolTip("서비스 키를 입력하세요.")
 
@@ -907,7 +905,7 @@ class MyWidget(QWidget):
                 elif file_type == "Excel files (*.xlsx)":
                     downloader.save_xlsx(file_path)
         else:
-            QMessageBox.critical(None, '에러', 'API 데이터를 가져오지 못했습니다.')
+            QMessageBox.critical(None, '에러', 'API를 호출하세요')
             
 # Enter를 눌렀을 때 다음 위젯으로 넘어가는 QLineEdit 서브클래스
 class EnterLineEdit(QLineEdit):
