@@ -850,30 +850,28 @@ class MyWidget(QWidget):
             return
 
         try:
-            api_caller = ApiCall(self.api_cache)  # Assuming ApiCall is properly defined elsewhere
-            params = self.get_parameters()  # This should retrieve additional API call parameters from the UI
+            api_caller = ApiCall(self.api_cache)
+            params = self.get_parameters()
             response = api_caller.call_params(key=key, url=url, **params)
 
-            if response is None:
-                QMessageBox.critical(self, 'Error', '서버로부터 응답을 받지 못했습니다.')
-                return
+            if response and response.status_code == 200:
+                response_data = fetch_data(response.text)
 
-            # Process the API response
-            response_data = fetch_data(response.text)  # Assuming fetch_data returns a dict or DataFrame
-
-            # Check for specific 'resultCode'
-            if 'resultCode' in response_data and response_data['resultCode'] == '00':
-                QMessageBox.critical(self, 'Error', '불러올 데이터가 없음. 파라미터 값을 확인해보세요.')
-                return
-            elif response.status_code == 500:
-                QMessageBox.critical(self, 'Error', f'오류 코드 {response.status_code}! API_URL을 잘못 입력했는지 확인해 보세요.')
-                return
+                # Check if 'resultCode' exists and equals '00'
+                if 'resultCode' in response_data.columns and any(response_data['resultCode'] == '00'):
+                    QMessageBox.critical(self, 'Error', '불러올 데이터가 없음. 파라미터 값을 확인해주세요.')
+                    return
+                
+                if not response_data.empty:
+                    self.origin_data = response  # Save the original response
+                    self.df_data = response_data  # Save the processed DataFrame
+                    PreviewUpdater.show_preview(self.preview_table, self.df_data)
+                else:
+                    QMessageBox.critical(self, 'Error', '잘못된 API 호출. 호출된 데이터가 없음.')
             else:
-                # Handle successful response with valid data
-                PreviewUpdater.show_preview(self.preview_table, response_data)
-
+                QMessageBox.critical(self, 'Error', f'서버 오류: {response.status_code}, API URL을 확인해주세요')
         except Exception as e:
-            QMessageBox.critical(self, 'Error', '불러올 데이터가 없음. 파라미터 값을 확인해보세요.')
+            QMessageBox.critical(self, 'Error', 'API 호출 중 오류 발생.')
 
     def download_parameters(self):
 
