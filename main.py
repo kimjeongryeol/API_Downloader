@@ -12,8 +12,8 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, QDialog, QTextEdit,
     QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QCheckBox, QSizePolicy, QComboBox, QMainWindow
-    
     )
+
 class CustomTitleBar(QWidget):
     def __init__(self, parent=None):
         super(CustomTitleBar, self).__init__(parent)
@@ -21,7 +21,6 @@ class CustomTitleBar(QWidget):
         self.parent = parent
 
         background_color = self.palette().window().color().name()
-        hover_color = "#e0e0e0"
 
         self.setStyleSheet(f"background-color: {background_color};")
 
@@ -64,7 +63,6 @@ class CustomTitleBar(QWidget):
         layout.addWidget(self.maximize_button)
         layout.addWidget(self.close_button)
         
-
         self.setLayout(layout)
 
         # 시그널과 슬롯 연결
@@ -156,7 +154,6 @@ API & API 병합을 위해:
         
         self.setLayout(layout)
 
-
 class ApiCall:
     def __init__(self, api_cache):
         self.cache = api_cache  # APICache 인스턴스를 인스턴스 변수로 저장합니다.
@@ -187,7 +184,6 @@ class ApiCall:
         # API 호출 결과를 캐시에 저장
         cache_key = response.url
         self.cache.set(cache_key, response)  # Cache the successful response
-    
         
 class RegistryManager:
     def __init__(self):
@@ -296,11 +292,11 @@ class RegistryManager:
         except Exception as e:
             QMessageBox.critical(None, "복구 실패", f"데이터베이스 복구 중 오류 발생: {e}")
 
-class ParameterSaver:
+class ParameterSaver: ## 클래스 이름 변경 필요하지않나?
     db_connection = None
     db_cursor = None
     
-    def __init__(self, id, url):
+    def __init__(self, id, url): ## id, url이 필요 없는 메서드도 있음
         self.id = id
         self.url = url
 
@@ -405,11 +401,45 @@ class ParameterSaver:
         finally:
             self.F_ConnectionClose()
 
+    def delete_row(self, id):
+        try:
+            # 선택된 ID의 행 전체 삭제
+            connection, cursor = ParameterSaver.F_connectPostDB()
+            if connection is not None and cursor is not None:
+                cursor.execute("DELETE FROM URL_TB WHERE id = ?", (id,))
+                cursor.execute("DELETE FROM PARAMS_TB WHERE id = ?", (id,))
+                connection.commit()
+                
+                QMessageBox.information(None, '성공', '선택한 파라미터가 성공적으로 삭제되었습니다.')
+            else:
+                QMessageBox.critical(None, '에러', '데이터베이스 연결에 실패했습니다.')
+        except sqlite3.Error as e:
+            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+        finally:
+            if connection:
+                ParameterSaver.F_ConnectionClose()
+
+    def get_params(self, id):
+        try:
+            connection, cursor = ParameterSaver.F_connectPostDB()
+            if connection is not None and cursor is not None:
+                cursor.execute("SELECT param FROM PARAMS_TB WHERE id = ?", (id,))
+                rows = cursor.fetchall()
+                return rows
+            else:
+                QMessageBox.critical(None, '에러', '데이터베이스 연결에 실패했습니다.')
+                return []
+        except sqlite3.Error as e:
+            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+            return []
+        finally:
+            if connection:
+                ParameterSaver.F_ConnectionClose()
+
     def load_parameter_list(param_table):
         connection, cursor = ParameterSaver.F_connectPostDB()
         if not connection or not cursor:
             return
-
         try:
             cursor.execute("SELECT * FROM URL_TB")
             rows = cursor.fetchall()
@@ -437,8 +467,6 @@ class ParameterSaver:
 
         finally:
             ParameterSaver.F_ConnectionClose()
-
-
 
 class PreviewUpdater:
     @staticmethod
@@ -513,7 +541,6 @@ class ParameterViewer(QWidget):
         self.resize(800, 600)
         self.param_table.itemDoubleClicked.connect(self.on_table_item_double_clicked)
     
-
     def load_parameters(self):
          ParameterSaver.load_parameter_list(self.param_table)
 
@@ -528,25 +555,9 @@ class ParameterViewer(QWidget):
             id_item = self.param_table.item(selected_row, 0)  # Assuming the first column contains the ID for deletion
             if id_item:
                 id = id_item.text()
-                try:
-                    # Delete the parameter from the database
-                    connection, cursor = ParameterSaver.F_connectPostDB()
-                    if connection is not None and cursor is not None:
-                        # Assuming 'URL_TB' table contains the 'id' column. Adjust if your schema is different.
-                        cursor.execute("DELETE FROM URL_TB WHERE id = ?", (id,))
-                        cursor.execute("DELETE FROM PARAMS_TB WHERE id = ?", (id,))
-                        connection.commit()
-                        
-                        # After successful deletion from the database, remove the row from the table
-                        self.param_table.removeRow(selected_row)
-                        QMessageBox.information(None, '성공', '선택한 파라미터가 성공적으로 삭제되었습니다.')
-                    else:
-                        QMessageBox.critical(None, '에러', '데이터베이스 연결에 실패했습니다.')
-                except sqlite3.Error as e:
-                    QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
-                finally:
-                    if connection:
-                        ParameterSaver.F_ConnectionClose()
+                parameter_saver = ParameterSaver(None, None)  # Instantiate ParameterSaver
+                parameter_saver.delete_row(id)
+                self.param_table.removeRow(selected_row)
         else:
             QMessageBox.warning(None, '경고', '선택된 행이 없습니다.')
 
@@ -568,13 +579,13 @@ class ParameterViewer(QWidget):
                     if id_item:
                         id = id_item.text()
 
-                    try:
-                        connection, cursor = ParameterSaver.F_connectPostDB()
-                        cursor.execute("SELECT param FROM PARAMS_TB WHERE id = ?", (id,))
-                        rows = cursor.fetchall()
+                        parameter_saver = ParameterSaver(None, None)  # Instantiate ParameterSaver
+                        rows = parameter_saver.get_params(id)
+
                         self.widget_instance.api_input.setText(rows[0][0])
-                        
+
                         parameters = {}
+
                         for row in rows[2:]:
                             key, value = row[0].split("=", 1)
                             if key == 'serviceKey':
@@ -584,10 +595,6 @@ class ParameterViewer(QWidget):
 
                         self.widget_instance.auto_add_parameters(parameters)
 
-                    except sqlite3.Error as e:
-                        print(f"Error: {e}")
-                    finally:
-                        ParameterSaver.F_ConnectionClose()
                 elif self.parent_widget_type == "DataJoinerApp":
                     api_caller = ApiCall(self.api_cache)
                     if self.target_url_field == "api_url1_edit":
@@ -667,7 +674,6 @@ class MyWidget(QWidget):
         self.call_button = QPushButton('OpenAPI 호출', self)
         self.call_button.clicked.connect(self.api_call)
         self.call_button.setToolTip("입력된 API와 요청 변수를 바탕으로 API를 호출합니다.")
-
 
         self.download_button = QPushButton('API 호출정보 저장', self)
         self.download_button.clicked.connect(self.download_data)
@@ -951,32 +957,31 @@ class DataDownload:
             QMessageBox.information(None, '알림', 'XML 파일 저장 성공!')
         except Exception as e:
             QMessageBox.information(None, '알림', 'XML 파일 저장 실패!')
-            print("XML 파일 저장 실패:", e)
 
     def save_csv(self, file_path):
         try:
             # UTF-8 인코딩으로 CSV 파일 저장, 인덱스는 제외하고, 각 레코드는 '\n'으로 종료
             self.api_data.to_csv(file_path, index=False, encoding='utf-8-sig')
-            print("csv 파일 저장 성공")
+            QMessageBox.information(None, '알림', 'csv 파일 저장 성공!')
         except Exception as e:
-            print(f"csv 파일 저장 실패: {e}")
+            QMessageBox.information(None, '알림', 'csv 파일 저장 실패!')
 
     def save_json(self, file_path):
         try:
             with open(file_path, 'w', encoding='utf-8') as file:
                 json.dump(self.api_data.to_dict(orient='records'), file, ensure_ascii=False, indent=4)
-            print("JSON 파일 저장 성공")
+            QMessageBox.information(None, '알림', 'JSON 파일 저장 성공!')
         except Exception as e:
-            print("JSON 파일 저장 실패:", e)
+            QMessageBox.information(None, '알림', 'JSON 파일 저장 실패!')
             
     def save_xlsx(self, file_path):
         try:
         # 엑셀 파일로 저장할 때는 ExcelWriter 객체를 생성하여 사용
             with pd.ExcelWriter(file_path, engine='xlsxwriter') as writer:
                 self.api_data.to_excel(writer, index=False)
-            print("엑셀 파일 저장 성공")
+            QMessageBox.information(None, '알림', '엑셀 파일 저장 성공!')
         except Exception as e:
-            print("엑셀 파일 저장 실패:", e)
+            QMessageBox.information(None, '알림', '엑셀 파일 저장 실패!')
                 
 def fetch_data(xml_data):
     data = parse_xml_to_dict(xml_data)
@@ -1063,17 +1068,13 @@ class DataJoinerApp(QWidget):
         self.save_btn.clicked.connect(self.download)
         layout.addWidget(self.save_btn)
         
-        
         self.setLayout(layout)
 
     def show_parameters(self, target_field):
         self.parameter_viewer = ParameterViewer(self, self.api_cache, "DataJoinerApp", target_url_field=target_field)
         self.parameter_viewer.show()
 
-
     def join_data(self):
-        # api_url_1 = self.api_url1_edit.text()
-        # api_url_2 = self.api_url2_edit.text()
         join_column1 = self.join_column1_combobox.currentText()
         join_column2 = self.join_column2_combobox.currentText()
 
@@ -1089,9 +1090,6 @@ class DataJoinerApp(QWidget):
         elif not self.join_column1_combobox.currentText():
             QMessageBox.warning(self, '경고', '첫 번째 API URL을(를) 선택해야 합니다!')
             return
-        
-        # self.df1 = fetch_data(api_url_1)
-        # self.df2 = fetch_data(api_url_2)
 
         if self.df1 is None or self.df2 is None:
             QMessageBox.critical(self, '오류', '데이터를 가져오는 데 실패했습니다. API URL을 확인해주세요.')
@@ -1170,7 +1168,6 @@ class MainApp(QMainWindow):
         # 커스텀 타이틀 바 설정
         self.custom_title_bar = CustomTitleBar(self)
         self.setMenuWidget(self.custom_title_bar)
-
 
     def showMyWidgetApp(self):
         if self.myWidgetApp is None:  # MyWidget 인스턴스가 없으면 생성
