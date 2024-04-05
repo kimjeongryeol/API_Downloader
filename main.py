@@ -169,7 +169,7 @@ class ApiCall:
         return self.call_with_url(url)
         
     def call_with_url(self, url):
-        if url in self.ch.keys:
+        if url in self.ch.cache:
             return self.ch.cache[url]
         else:
             try:
@@ -485,21 +485,16 @@ class APICache:
     def __init__(self, capacity=10):
         self.cache = {}
         self.capacity = capacity
-        self.keys = []
 
     def get(self, key):
-        if key in self.keys:
-            return self.cache[key]
-        else:
-            return None
+        return self.cache[key]
 
     def set(self, key, value):
         """API 호출 결과 캐시에 저장. 캐시가 가득 차면 가장 오래된 항목 제거"""
         if key not in self.cache:
-            if len(self.keys) >= self.capacity:
-                oldest_key = self.keys.pop(0)
-                del self.cache[oldest_key]
-            self.keys.append(key)
+            if len(self.cache) >= self.capacity:
+                oldest_key = next(iter(self.cache))  # 가장 오래된 항목의 키를 가져옵니다.
+                del self.cache[oldest_key]  # 가장 오래된 항목을 제거합니다.
         self.cache[key] = value
 
     def clear(self):
