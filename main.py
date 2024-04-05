@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 import os
 import winreg as reg
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
@@ -156,34 +156,34 @@ API & API 병합을 위해:
 
 class ApiCall:
     def __init__(self, api_cache):
-        self.cache = api_cache  # APICache 인스턴스를 인스턴스 변수로 저장합니다.
+        self.ch = api_cache  # APICache 인스턴스를 인스턴스 변수로 저장합니다.
 
     def call_params(self, key, url, **kwargs):
         params = {'dataType': 'XML', 'serviceKey': key}
 
         for v in kwargs.keys():
             params[v] = kwargs[v]
-        try:
-            response =  requests.get(url, params=params)
-            self.save_cache(response)
-            return response
-        except requests.exceptions.RequestException as e:
-            QMessageBox.critical(None, '에러', '호출 중 오류 발생! 응답 상태 코드: ' + str(response.status_code))
-            return None
+
+        query_string = urlencode(params)
+        url = urljoin(url, '?' + query_string)
+        return self.call_with_url(url)
         
     def call_with_url(self, url):
-        try:
-            response =  requests.get(url)
-            self.save_cache(response)
-            return response
-        except requests.exceptions.RequestException as e:
-            QMessageBox.critical(None, '에러', '호출 중 오류 발생! 응답 상태 코드: ' + str(response.status_code))
-            return None
+        if url in self.ch.keys:
+            return self.ch.cache[url]
+        else:
+            try:
+                response =  requests.get(url)
+                self.save_cache(response)
+                return response
+            except requests.exceptions.RequestException as e:
+                QMessageBox.critical(None, '에러', '호출 중 오류 발생! 응답 상태 코드: ' + str(response.status_code))
+                return None
           
     def save_cache(self, response):
         # API 호출 결과를 캐시에 저장
         cache_key = response.url
-        self.cache.set(cache_key, response)  # Cache the successful response
+        self.ch.set(cache_key, response)  # Cache the successful response
         
 class RegistryManager:
     def __init__(self):
@@ -488,8 +488,10 @@ class APICache:
         self.keys = []
 
     def get(self, key):
-        """API 결과 반환. 캐시에 없으면 None 반환"""
-        return self.cache.get(key, None)
+        if key in self.keys:
+            return self.cache[key]
+        else:
+            return None
 
     def set(self, key, value):
         """API 호출 결과 캐시에 저장. 캐시가 가득 차면 가장 오래된 항목 제거"""
