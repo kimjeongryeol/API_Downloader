@@ -1,14 +1,5 @@
-import json
-import sqlite3
-import sys
-import xml.etree.ElementTree as ET
-import pandas as pd
-import requests
-import os
-import winreg as reg
-from urllib.parse import parse_qs, urlparse
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QPalette
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, QDialog, QTextEdit,
     QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QCheckBox, QSizePolicy, QComboBox, QMainWindow
@@ -17,100 +8,101 @@ from PyQt5.QtWidgets import (
 class CustomTitleBar(QWidget):
     def __init__(self, parent=None):
         super(CustomTitleBar, self).__init__(parent)
-        self.setFixedHeight(35)  # 높이 조정
-        self.parent = parent
+        self.parent = parent  # Store a reference to the parent window
+        self.mousePressed = False
+        self.initUI()
 
-        background_color = self.palette().window().color().name()
-        hover_color = "#e0e0e0"
+    def initUI(self):
+        self.setAutoFillBackground(True)
+        self.setBackgroundRole(QPalette.Highlight)
+        self.setFixedHeight(40)  # Adjust the height dynamically if needed
 
-        self.setStyleSheet(f"background-color: {background_color};")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)  # Adjust to make sure there's no unwanted padding
 
-        # 수평 레이아웃 사용
-        layout = QHBoxLayout()
-        layout.setContentsMargins(5, 0, 5, 0)  # 여백 설정
+        # Version title setup
+        self.title = QLabel("Version 1.0.0", self)
+        self.title.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        layout.addWidget(self.title)
 
-        # 버전 라벨과 버튼 정의
-        self.version_label = QLabel("Version 1.0.0")
-        self.help_button = QPushButton("?")
-        self.minimize_button = QPushButton("ㅡ")
-        self.maximize_button = QPushButton("☐")
-        self.close_button = QPushButton("✕")
-        self.help_button.setToolTip("도움말")  # 도움말 툴팁 추가
-        self.minimize_button.setToolTip("최소화")  # 최소화 툴팁 추가
-        self.maximize_button.setToolTip("최대화")  # 최대화 툴팁 추가
-        self.close_button.setToolTip("닫기")  # 닫기 툴팁 추가
+        # Tool buttons (minimize, maximize/restore, close)
+        self.minimizeButton = QPushButton("─", self)
+        self.maximizeButton = QPushButton("☐", self)
+        self.closeButton = QPushButton("✕", self)
+        self.helpButton = QPushButton("?", self)
 
-        # 버튼 스타일 적용
-        button_style = f"""
-        QPushButton {{
-            background-color: #ffffff;
-            border: none;
-            border-radius: 5px;
-        }}
-        QPushButton:hover {{
-            background-color: #e0e0e0;
-        }}
-        """
-        self.minimize_button.setStyleSheet(button_style)
-        self.maximize_button.setStyleSheet(button_style)
-        self.close_button.setStyleSheet(button_style)
-        self.help_button.setStyleSheet(button_style)
+        self.minimizeButton.clicked.connect(self.parent.showMinimized)
+        self.maximizeButton.clicked.connect(self.toggleMaximizeRestore)
+        self.closeButton.clicked.connect(self.parent.close)
+        self.helpButton.clicked.connect(self.showHelp)
 
-        # 레이아웃에 위젯 추가
-        layout.addWidget(self.version_label)
-        layout.addStretch()  # 중간 공간 추가
-        layout.addWidget(self.help_button)
-        layout.addWidget(self.minimize_button)
-        layout.addWidget(self.maximize_button)
-        layout.addWidget(self.close_button)
-        
+        # Add buttons to the layout
+        for button in [self.helpButton, self.minimizeButton, self.maximizeButton, self.closeButton]:
+            layout.addWidget(button)
+            button.setFixedSize(35, 35)  # Example size, adjust as needed
 
         self.setLayout(layout)
 
-        # 시그널과 슬롯 연결
-        self.minimize_button.clicked.connect(self.minimize)
-        self.maximize_button.clicked.connect(self.maximize_restore)
-        self.close_button.clicked.connect(self.close)
-        self.help_button.clicked.connect(self.show_help)
+    def defineToolButtons(self):
+        self.minimize_button = QPushButton("ㅡ", self)
+        self.minimize_button.clicked.connect(lambda: self.parent().showMinimized())
+
+        self.maximize_button = QPushButton("☐", self)
+        self.maximize_button.clicked.connect(self.toggleMaximizeRestore)
+
+        self.close_button = QPushButton("✕", self)
+        self.close_button.clicked.connect(lambda: self.parent().close())
+
+        self.normal_button = QPushButton("🗗", self)
+        self.normal_button.clicked.connect(lambda: self.parent().showNormal())
+        self.normal_button.setVisible(False)
+
+        self.help_Button = QPushButton("?", self)
+        self.help_Button.clicked.connect(self.showHelp)
+    
+
+    def adjustHeight(self):
+        max_height = max([widget.sizeHint().height() for widget in self.children() if isinstance(widget, QPushButton)])
+        padding = 10  # Add some padding
+        self.setFixedHeight(max_height + padding)
 
     def mousePressEvent(self, event):
-        # 창 이동을 위한 초기 위치 설정
-        if event.button() == Qt.LeftButton:
-            self.moving = True
-            self.offset = event.pos()
+        self.mousePressed = True
+        self.mousePos = event.globalPos()
 
     def mouseMoveEvent(self, event):
-        if self.moving:
-            self.parent.move(event.globalPos() - self.offset)
+        if self.mousePressed:
+            # Calculate the difference and move the window
+            diff = event.globalPos() - self.mousePos
+            self.parent.move(self.parent.pos() + diff)
+            self.mousePos = event.globalPos()
 
     def mouseReleaseEvent(self, event):
-        self.moving = False
+        self.mousePressed = False
 
     def mouseDoubleClickEvent(self, event):
-        self.maximize_restore()
-        
-    def minimize(self):
-        self.parent.showMinimized()
+        self.toggleMaximizeRestore()
 
-    def maximize_restore(self):
+    def toggleMaximizeRestore(self):
         if self.parent.isMaximized():
             self.parent.showNormal()
+            self.maximizeButton.setText("☐")
         else:
             self.parent.showMaximized()
+            self.maximizeButton.setText("🗗")
+    
 
-    def close(self):
-        self.parent.close()
-
-    def show_help(self):
+    def showHelp(self):
         help_dialog = HelpDialog(self)
         help_dialog.exec_()
+
 
 class HelpDialog(QDialog):
     def __init__(self, parent=None):
         super(HelpDialog, self).__init__(parent)
-        self.setWindowTitle("도움말")
+        self.setWindowTitle("Help")
         self.resize(600, 400)
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
 
         help_text = """
 이 프로그램은 API를 호출하고 API간 병합을 도와주는 프로그램 입니다.
@@ -155,13 +147,13 @@ API & API 병합을 위해:
         layout.addWidget(close_button)
         
         self.setLayout(layout)
-
-
+        
 class ApiCall:
     def __init__(self, api_cache):
         self.cache = api_cache  # APICache 인스턴스를 인스턴스 변수로 저장합니다.
 
     def call_params(self, key, url, **kwargs):
+        import requests
         params = {'dataType': 'XML', 'serviceKey': key}
 
         for v in kwargs.keys():
@@ -175,6 +167,7 @@ class ApiCall:
             return None
         
     def call_with_url(self, url):
+        import requests
         try:
             response =  requests.get(url)
             self.save_cache(response)
@@ -190,6 +183,7 @@ class ApiCall:
     
         
 class RegistryManager:
+    
     def __init__(self):
         self.reg_path = r"Software\Kwater\APIDOWNLOADER"
         self.backup_reg_path = r"Software\Kwater\APIDOWNLOADER\Backup"
@@ -198,6 +192,7 @@ class RegistryManager:
 
     def load_settings(self):
         """레지스트리에서 설정을 로드합니다."""
+        import winreg as reg
         settings = {}
         try:
             with reg.OpenKey(reg.HKEY_CURRENT_USER, self.reg_path, 0, reg.KEY_READ) as key:
@@ -218,6 +213,7 @@ class RegistryManager:
 
     def save_settings(self, id_url_list):
         """설정을 레지스트리에 저장합니다."""
+        import winreg as reg
         try:
             # 새로운 값 맨 앞에 추가하고, 기존의 값들을 뒤로 밀어내기
             new_id, new_url = id_url_list[0]  # 새로운 값
@@ -243,6 +239,10 @@ class RegistryManager:
 
     def recover_param_db_from_registry(self, db_path):
         """레지스트리 백업에서 param_db 파일의 데이터를 복구합니다."""
+        import winreg as reg
+        import os
+        import sqlite3
+        from urllib.parse import parse_qs, urlparse
         try:
             # 데이터베이스 파일 생성
             if not os.path.exists(db_path):
@@ -306,6 +306,8 @@ class ParameterSaver:
 
     @staticmethod
     def F_connectPostDB():
+        import sqlite3
+        import os
         db_path = 'params_db.sqlite'
         
         if not os.path.exists(db_path):
@@ -372,6 +374,8 @@ class ParameterSaver:
             ParameterSaver.db_cursor = None
 
     def save_parameters(self):
+        from urllib.parse import parse_qs, urlparse
+        import sqlite3
         # 데이터베이스 연결
         self.F_connectPostDB()
         if ParameterSaver.db_connection is None or ParameterSaver.db_cursor is None:
@@ -406,6 +410,7 @@ class ParameterSaver:
             self.F_ConnectionClose()
 
     def load_parameter_list(param_table):
+        import sqlite3
         connection, cursor = ParameterSaver.F_connectPostDB()
         if not connection or not cursor:
             return
@@ -522,6 +527,7 @@ class ParameterViewer(QWidget):
         self.on_confirm_button_clicked()
 
     def on_delete_button_clicked(self):
+        import sqlite3
         selected_items = self.param_table.selectedItems()
         if selected_items:
             selected_row = selected_items[0].row()
@@ -553,6 +559,7 @@ class ParameterViewer(QWidget):
 
 
     def on_confirm_button_clicked(self):
+        import sqlite3
         selected_items = self.param_table.selectedItems()
         if selected_items:
             selected_row = selected_items[0].row()
@@ -608,6 +615,7 @@ class ParameterViewer(QWidget):
 
 class MyWidget(QWidget):
     def __init__(self, api_cache):
+        import pandas as pd
         super().__init__()
         self.df_data = pd.DataFrame() # 데이터 프레임?!!?
         self.origin_data = None
@@ -624,7 +632,7 @@ class MyWidget(QWidget):
 
     def setup(self):
         self.setWindowTitle('API 다운로더')
-        self.setGeometry(600, 600, 600, 600)
+        self.setGeometry(500, 500, 500, 500)
         font = QFont()
         font.setPointSize(10)
         self.setFont(font)
@@ -953,6 +961,7 @@ class DataDownload:
             print(f"csv 파일 저장 실패: {e}")
 
     def save_json(self, file_path):
+        import json
         try:
             with open(file_path, 'w', encoding='utf-8') as file:
                 json.dump(self.api_data.to_dict(orient='records'), file, ensure_ascii=False, indent=4)
@@ -961,6 +970,7 @@ class DataDownload:
             print("JSON 파일 저장 실패:", e)
             
     def save_xlsx(self, file_path):
+        import pandas as pd
         try:
         # 엑셀 파일로 저장할 때는 ExcelWriter 객체를 생성하여 사용
             with pd.ExcelWriter(file_path, engine='xlsxwriter') as writer:
@@ -970,12 +980,14 @@ class DataDownload:
             print("엑셀 파일 저장 실패:", e)
                 
 def fetch_data(xml_data):
+    import pandas as pd
     data = parse_xml_to_dict(xml_data)
     df = pd.DataFrame(data)
     return df
 
 def parse_xml_to_dict(xml_data): 
     data_list = []
+    import xml.etree.ElementTree as ET
     try:
         root = ET.fromstring(xml_data)
         if root.findall('.//item'):
@@ -999,49 +1011,56 @@ def parse_xml_to_dict(xml_data):
 class DataJoinerApp(QWidget):
     def __init__(self, api_cache):
         super().__init__()
-        self.initUI()
         self.api_cache = api_cache
         self.df1 = None
         self.df2 = None
         self.joined_data = None
+        self.initUI()
 
     def initUI(self):
-        self.setWindowTitle('API Data Joiner')
-        self.setGeometry(100, 100, 600, 400)
-        
-        layout = QVBoxLayout()
+        # Window flags are adjusted to allow for a custom title bar
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setGeometry(700, 700, 700, 700)
 
+        # Layout for the entire widget
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Custom title bar is created and added first
+        self.custom_title_bar = CustomTitleBar(self)
+        layout.addWidget(self.custom_title_bar)
+
+        # Input fields for API URLs
         self.api_url1_edit = QLineEdit(self)
         self.api_url1_edit.setReadOnly(True)
         self.select_button1 = QPushButton('URL1 선택', self)
-        # URL1 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button1.clicked.connect(lambda: self.show_parameters('api_url1_edit'))
-        self.select_button1.setToolTip("조인할 첫 번째 데이터를 선택하세요.")
-
 
         self.api_url2_edit = QLineEdit(self)
         self.api_url2_edit.setReadOnly(True)
         self.select_button2 = QPushButton('URL2 선택', self)
-        # URL2 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button2.clicked.connect(lambda: self.show_parameters('api_url2_edit'))
-        self.select_button2.setToolTip("조인할 두 번째 데이터를 선택하세요.")
 
-        # UI 구성
+        # Adding the API URL fields and buttons to the layout
         layout.addWidget(QLabel('첫 번째 API 주소:'))
         layout.addWidget(self.api_url1_edit)
-        layout.addWidget(self.select_button1)  # 올바른 버튼 변수명 사용
-        
+        layout.addWidget(self.select_button1)
+
         layout.addWidget(QLabel('두 번째 API 주소:'))
         layout.addWidget(self.api_url2_edit)
-        layout.addWidget(self.select_button2)  # 올바른 버튼 변수명 사용
+        layout.addWidget(self.select_button2)
 
+        # Comboboxes for selecting the columns to join on
         self.join_column1_combobox = QComboBox(self)
+        self.join_column2_combobox = QComboBox(self)
+
         layout.addWidget(QLabel('조인할 컬럼1 이름:'))
         layout.addWidget(self.join_column1_combobox)
 
-        self.join_column2_combobox = QComboBox(self)
         layout.addWidget(QLabel('조인할 컬럼2 이름:'))
         layout.addWidget(self.join_column2_combobox)
+
 
         self.join_button = QPushButton('데이터 조인', self)
         self.join_button.clicked.connect(self.join_data)
@@ -1063,8 +1082,7 @@ class DataJoinerApp(QWidget):
 
 
     def join_data(self):
-        # api_url_1 = self.api_url1_edit.text()
-        # api_url_2 = self.api_url2_edit.text()
+        import pandas as pd
         join_column1 = self.join_column1_combobox.currentText()
         join_column2 = self.join_column2_combobox.currentText()
 
@@ -1134,14 +1152,17 @@ class MainApp(QMainWindow):
 
         self.registry_manager = RegistryManager()
         self.settings = self.registry_manager.load_settings()
+
+        # Initially set these to None to indicate they're not loaded yet
         self.myWidgetApp = None
         self.dataJoiner = None
+
         self.initUI()
-        self.setStyleSheet("QMainWindow {background: 'white';}")
+        # self.setStyleSheet("QMainWindow {background: 'white';}")
     
     def initUI(self):
         self.setWindowTitle('API')
-        self.setGeometry(500, 500, 500, 500)
+        self.setGeometry(600, 600, 600, 600)
         
         centralWidget = QWidget()
         self.setCentralWidget(centralWidget)
@@ -1158,7 +1179,7 @@ class MainApp(QMainWindow):
         
         centralWidget.setLayout(hbox)
         
-        # 커스텀 타이틀 바 설정
+        # Custom title bar setup
         self.custom_title_bar = CustomTitleBar(self)
         self.setMenuWidget(self.custom_title_bar)
 
@@ -1174,6 +1195,7 @@ class MainApp(QMainWindow):
         self.dataJoiner.show()  # DataJoinerApp 표시
 
 if __name__ == '__main__':
+    import sys
     app = QApplication.instance()  # 기존 인스턴스 확인
     if not app:  # 인스턴스가 없을 경우 새로 생성
         app = QApplication(sys.argv)
