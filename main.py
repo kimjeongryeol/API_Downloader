@@ -1,114 +1,108 @@
-import json
-import sqlite3
-import sys
-import xml.etree.ElementTree as ET
-import pandas as pd
-import requests
-import os
-import winreg as reg
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QPalette
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget, QHeaderView, QTableWidgetItem, QMessageBox, QDialog, QTextEdit,
     QInputDialog, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QAbstractItemView, QCheckBox, QSizePolicy, QComboBox, QMainWindow
+    
     )
-
 class CustomTitleBar(QWidget):
     def __init__(self, parent=None):
         super(CustomTitleBar, self).__init__(parent)
-        self.setFixedHeight(35)  # 높이 조정
-        self.parent = parent
+        self.parent = parent  # Store a reference to the parent window
+        self.mousePressed = False
+        self.initUI()
 
-        background_color = self.palette().window().color().name()
+    def initUI(self):
+        self.setAutoFillBackground(True)
+        self.setBackgroundRole(QPalette.Highlight)
+        self.setFixedHeight(40)  # Adjust the height dynamically if needed
 
-        self.setStyleSheet(f"background-color: {background_color};")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)  # Adjust to make sure there's no unwanted padding
 
-        # 수평 레이아웃 사용
-        layout = QHBoxLayout()
-        layout.setContentsMargins(5, 0, 5, 0)  # 여백 설정
+        # Version title setup
+        self.title = QLabel("Version 1.0.0", self)
+        self.title.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        layout.addWidget(self.title)
 
-        # 버전 라벨과 버튼 정의
-        self.version_label = QLabel("Version 1.0.0")
-        self.help_button = QPushButton("?")
-        self.minimize_button = QPushButton("ㅡ")
-        self.maximize_button = QPushButton("☐")
-        self.close_button = QPushButton("✕")
-        self.help_button.setToolTip("도움말")  # 도움말 툴팁 추가
-        self.minimize_button.setToolTip("최소화")  # 최소화 툴팁 추가
-        self.maximize_button.setToolTip("최대화")  # 최대화 툴팁 추가
-        self.close_button.setToolTip("닫기")  # 닫기 툴팁 추가
+        # Tool buttons (minimize, maximize/restore, close)
+        self.minimizeButton = QPushButton("─", self)
+        self.maximizeButton = QPushButton("☐", self)
+        self.closeButton = QPushButton("✕", self)
+        self.helpButton = QPushButton("?", self)
 
-        # 버튼 스타일 적용
-        button_style = f"""
-        QPushButton {{
-            background-color: #ffffff;
-            border: none;
-            border-radius: 5px;
-        }}
-        QPushButton:hover {{
-            background-color: #e0e0e0;
-        }}
-        """
-        self.minimize_button.setStyleSheet(button_style)
-        self.maximize_button.setStyleSheet(button_style)
-        self.close_button.setStyleSheet(button_style)
-        self.help_button.setStyleSheet(button_style)
+        self.minimizeButton.clicked.connect(self.parent.showMinimized)
+        self.maximizeButton.clicked.connect(self.toggleMaximizeRestore)
+        self.closeButton.clicked.connect(self.parent.close)
+        self.helpButton.clicked.connect(self.showHelp)
 
-        # 레이아웃에 위젯 추가
-        layout.addWidget(self.version_label)
-        layout.addStretch()  # 중간 공간 추가
-        layout.addWidget(self.help_button)
-        layout.addWidget(self.minimize_button)
-        layout.addWidget(self.maximize_button)
-        layout.addWidget(self.close_button)
-        
+        # Add buttons to the layout
+        for button in [self.helpButton, self.minimizeButton, self.maximizeButton, self.closeButton]:
+            layout.addWidget(button)
+            button.setFixedSize(35, 35)  # Example size, adjust as needed
+
         self.setLayout(layout)
 
-        # 시그널과 슬롯 연결
-        self.minimize_button.clicked.connect(self.minimize)
-        self.maximize_button.clicked.connect(self.maximize_restore)
-        self.close_button.clicked.connect(self.close)
-        self.help_button.clicked.connect(self.show_help)
+    def defineToolButtons(self):
+        self.minimize_button = QPushButton("ㅡ", self)
+        self.minimize_button.clicked.connect(lambda: self.parent().showMinimized())
+
+        self.maximize_button = QPushButton("☐", self)
+        self.maximize_button.clicked.connect(self.toggleMaximizeRestore)
+
+        self.close_button = QPushButton("✕", self)
+        self.close_button.clicked.connect(lambda: self.parent().close())
+
+        self.normal_button = QPushButton("🗗", self)
+        self.normal_button.clicked.connect(lambda: self.parent().showNormal())
+        self.normal_button.setVisible(False)
+
+        self.help_Button = QPushButton("?", self)
+        self.help_Button.clicked.connect(self.showHelp)
+    
+
+    def adjustHeight(self):
+        max_height = max([widget.sizeHint().height() for widget in self.children() if isinstance(widget, QPushButton)])
+        padding = 10  # Add some padding
+        self.setFixedHeight(max_height + padding)
 
     def mousePressEvent(self, event):
-        # 창 이동을 위한 초기 위치 설정
-        if event.button() == Qt.LeftButton:
-            self.moving = True
-            self.offset = event.pos()
+        self.mousePressed = True
+        self.mousePos = event.globalPos()
 
     def mouseMoveEvent(self, event):
-        if self.moving:
-            self.parent.move(event.globalPos() - self.offset)
+        if self.mousePressed:
+            # Calculate the difference and move the window
+            diff = event.globalPos() - self.mousePos
+            self.parent.move(self.parent.pos() + diff)
+            self.mousePos = event.globalPos()
 
     def mouseReleaseEvent(self, event):
-        self.moving = False
+        self.mousePressed = False
 
     def mouseDoubleClickEvent(self, event):
-        self.maximize_restore()
-        
-    def minimize(self):
-        self.parent.showMinimized()
+        self.toggleMaximizeRestore()
 
-    def maximize_restore(self):
+    def toggleMaximizeRestore(self):
         if self.parent.isMaximized():
             self.parent.showNormal()
+            self.maximizeButton.setText("☐")
         else:
             self.parent.showMaximized()
+            self.maximizeButton.setText("🗗")
+    
 
-    def close(self):
-        self.parent.close()
-
-    def show_help(self):
+    def showHelp(self):
         help_dialog = HelpDialog(self)
         help_dialog.exec_()
+
 
 class HelpDialog(QDialog):
     def __init__(self, parent=None):
         super(HelpDialog, self).__init__(parent)
-        self.setWindowTitle("도움말")
+        self.setWindowTitle("Help")
         self.resize(600, 400)
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
 
         help_text = """
 이 프로그램은 API를 호출하고 API간 병합을 도와주는 프로그램 입니다.
@@ -153,39 +147,43 @@ API & API 병합을 위해:
         layout.addWidget(close_button)
         
         self.setLayout(layout)
-
+        
 class ApiCall:
     def __init__(self, api_cache):
-        self.ch = api_cache  # APICache 인스턴스를 인스턴스 변수로 저장합니다.
+        self.cache = api_cache  # APICache 인스턴스를 인스턴스 변수로 저장합니다.
 
     def call_params(self, key, url, **kwargs):
+        import requests
         params = {'dataType': 'XML', 'serviceKey': key}
 
         for v in kwargs.keys():
             params[v] = kwargs[v]
-
-        query_string = urlencode(params)
-        url = urljoin(url, '?' + query_string)
-        return self.call_with_url(url)
+        try:
+            response =  requests.get(url, params=params)
+            self.save_cache(response)
+            return response
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(None, '에러', '호출 중 오류 발생! 응답 상태 코드: ' + str(response.status_code))
+            return None
         
     def call_with_url(self, url):
-        if url in self.ch.cache:
-            return self.ch.cache[url]
-        else:
-            try:
-                response =  requests.get(url)
-                self.save_cache(response)
-                return response
-            except requests.exceptions.RequestException as e:
-                QMessageBox.critical(None, '에러', '호출 중 오류 발생! 응답 상태 코드: ' + str(response.status_code))
-                return None
+        import requests
+        try:
+            response =  requests.get(url)
+            self.save_cache(response)
+            return response
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(None, '에러', '호출 중 오류 발생! 응답 상태 코드: ' + str(response.status_code))
+            return None
           
     def save_cache(self, response):
         # API 호출 결과를 캐시에 저장
         cache_key = response.url
-        self.ch.set(cache_key, response)  # Cache the successful response
+        self.cache.set(cache_key, response)  # Cache the successful response
+    
         
 class RegistryManager:
+    
     def __init__(self):
         self.reg_path = r"Software\Kwater\APIDOWNLOADER"
         self.backup_reg_path = r"Software\Kwater\APIDOWNLOADER\Backup"
@@ -194,6 +192,7 @@ class RegistryManager:
 
     def load_settings(self):
         """레지스트리에서 설정을 로드합니다."""
+        import winreg as reg
         settings = {}
         try:
             with reg.OpenKey(reg.HKEY_CURRENT_USER, self.reg_path, 0, reg.KEY_READ) as key:
@@ -214,6 +213,7 @@ class RegistryManager:
 
     def save_settings(self, id_url_list):
         """설정을 레지스트리에 저장합니다."""
+        import winreg as reg
         try:
             # 새로운 값 맨 앞에 추가하고, 기존의 값들을 뒤로 밀어내기
             new_id, new_url = id_url_list[0]  # 새로운 값
@@ -239,6 +239,10 @@ class RegistryManager:
 
     def recover_param_db_from_registry(self, db_path):
         """레지스트리 백업에서 param_db 파일의 데이터를 복구합니다."""
+        import winreg as reg
+        import os
+        import sqlite3
+        from urllib.parse import parse_qs, urlparse
         try:
             # 데이터베이스 파일 생성
             if not os.path.exists(db_path):
@@ -292,16 +296,18 @@ class RegistryManager:
         except Exception as e:
             QMessageBox.critical(None, "복구 실패", f"데이터베이스 복구 중 오류 발생: {e}")
 
-class ParameterSaver: ## 클래스 이름 변경 필요하지않나?
+class ParameterSaver:
     db_connection = None
     db_cursor = None
     
-    def __init__(self, id, url): ## id, url이 필요 없는 메서드도 있음
+    def __init__(self, id, url):
         self.id = id
         self.url = url
 
     @staticmethod
     def F_connectPostDB():
+        import sqlite3
+        import os
         db_path = 'params_db.sqlite'
         
         if not os.path.exists(db_path):
@@ -368,6 +374,8 @@ class ParameterSaver: ## 클래스 이름 변경 필요하지않나?
             ParameterSaver.db_cursor = None
 
     def save_parameters(self):
+        from urllib.parse import parse_qs, urlparse
+        import sqlite3
         # 데이터베이스 연결
         self.F_connectPostDB()
         if ParameterSaver.db_connection is None or ParameterSaver.db_cursor is None:
@@ -401,45 +409,12 @@ class ParameterSaver: ## 클래스 이름 변경 필요하지않나?
         finally:
             self.F_ConnectionClose()
 
-    def delete_row(self, id):
-        try:
-            # 선택된 ID의 행 전체 삭제
-            connection, cursor = ParameterSaver.F_connectPostDB()
-            if connection is not None and cursor is not None:
-                cursor.execute("DELETE FROM URL_TB WHERE id = ?", (id,))
-                cursor.execute("DELETE FROM PARAMS_TB WHERE id = ?", (id,))
-                connection.commit()
-                
-                QMessageBox.information(None, '성공', '선택한 파라미터가 성공적으로 삭제되었습니다.')
-            else:
-                QMessageBox.critical(None, '에러', '데이터베이스 연결에 실패했습니다.')
-        except sqlite3.Error as e:
-            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
-        finally:
-            if connection:
-                ParameterSaver.F_ConnectionClose()
-
-    def get_params(self, id):
-        try:
-            connection, cursor = ParameterSaver.F_connectPostDB()
-            if connection is not None and cursor is not None:
-                cursor.execute("SELECT param FROM PARAMS_TB WHERE id = ?", (id,))
-                rows = cursor.fetchall()
-                return rows
-            else:
-                QMessageBox.critical(None, '에러', '데이터베이스 연결에 실패했습니다.')
-                return []
-        except sqlite3.Error as e:
-            QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
-            return []
-        finally:
-            if connection:
-                ParameterSaver.F_ConnectionClose()
-
     def load_parameter_list(param_table):
+        import sqlite3
         connection, cursor = ParameterSaver.F_connectPostDB()
         if not connection or not cursor:
             return
+
         try:
             cursor.execute("SELECT * FROM URL_TB")
             rows = cursor.fetchall()
@@ -468,6 +443,8 @@ class ParameterSaver: ## 클래스 이름 변경 필요하지않나?
         finally:
             ParameterSaver.F_ConnectionClose()
 
+
+
 class PreviewUpdater:
     @staticmethod
     def show_preview(preview_table, data):
@@ -485,16 +462,19 @@ class APICache:
     def __init__(self, capacity=10):
         self.cache = {}
         self.capacity = capacity
+        self.keys = []
 
     def get(self, key):
-        return self.cache[key]
+        """API 결과 반환. 캐시에 없으면 None 반환"""
+        return self.cache.get(key, None)
 
     def set(self, key, value):
         """API 호출 결과 캐시에 저장. 캐시가 가득 차면 가장 오래된 항목 제거"""
         if key not in self.cache:
-            if len(self.cache) >= self.capacity:
-                oldest_key = next(iter(self.cache))  # 가장 오래된 항목의 키를 가져옵니다.
-                del self.cache[oldest_key]  # 가장 오래된 항목을 제거합니다.
+            if len(self.keys) >= self.capacity:
+                oldest_key = self.keys.pop(0)
+                del self.cache[oldest_key]
+            self.keys.append(key)
         self.cache[key] = value
 
     def clear(self):
@@ -538,6 +518,7 @@ class ParameterViewer(QWidget):
         self.resize(800, 600)
         self.param_table.itemDoubleClicked.connect(self.on_table_item_double_clicked)
     
+
     def load_parameters(self):
          ParameterSaver.load_parameter_list(self.param_table)
 
@@ -546,19 +527,39 @@ class ParameterViewer(QWidget):
         self.on_confirm_button_clicked()
 
     def on_delete_button_clicked(self):
+        import sqlite3
         selected_items = self.param_table.selectedItems()
         if selected_items:
             selected_row = selected_items[0].row()
             id_item = self.param_table.item(selected_row, 0)  # Assuming the first column contains the ID for deletion
             if id_item:
                 id = id_item.text()
-                parameter_saver = ParameterSaver(None, None)  # Instantiate ParameterSaver
-                parameter_saver.delete_row(id)
-                self.param_table.removeRow(selected_row)
+                try:
+                    # Delete the parameter from the database
+                    connection, cursor = ParameterSaver.F_connectPostDB()
+                    if connection is not None and cursor is not None:
+                        # Assuming 'URL_TB' table contains the 'id' column. Adjust if your schema is different.
+                        cursor.execute("DELETE FROM URL_TB WHERE id = ?", (id,))
+                        cursor.execute("DELETE FROM PARAMS_TB WHERE id = ?", (id,))
+                        connection.commit()
+                        
+                        # After successful deletion from the database, remove the row from the table
+                        self.param_table.removeRow(selected_row)
+                        QMessageBox.information(None, '성공', '선택한 파라미터가 성공적으로 삭제되었습니다.')
+                    else:
+                        QMessageBox.critical(None, '에러', '데이터베이스 연결에 실패했습니다.')
+                except sqlite3.Error as e:
+                    QMessageBox.critical(None, '에러', f"데이터베이스 오류 발생: {e}")
+                finally:
+                    if connection:
+                        ParameterSaver.F_ConnectionClose()
         else:
             QMessageBox.warning(None, '경고', '선택된 행이 없습니다.')
 
+
+
     def on_confirm_button_clicked(self):
+        import sqlite3
         selected_items = self.param_table.selectedItems()
         if selected_items:
             selected_row = selected_items[0].row()
@@ -576,13 +577,13 @@ class ParameterViewer(QWidget):
                     if id_item:
                         id = id_item.text()
 
-                        parameter_saver = ParameterSaver(None, None)  # Instantiate ParameterSaver
-                        rows = parameter_saver.get_params(id)
-
+                    try:
+                        connection, cursor = ParameterSaver.F_connectPostDB()
+                        cursor.execute("SELECT param FROM PARAMS_TB WHERE id = ?", (id,))
+                        rows = cursor.fetchall()
                         self.widget_instance.api_input.setText(rows[0][0])
-
+                        
                         parameters = {}
-
                         for row in rows[2:]:
                             key, value = row[0].split("=", 1)
                             if key == 'serviceKey':
@@ -592,6 +593,10 @@ class ParameterViewer(QWidget):
 
                         self.widget_instance.auto_add_parameters(parameters)
 
+                    except sqlite3.Error as e:
+                        print(f"Error: {e}")
+                    finally:
+                        ParameterSaver.F_ConnectionClose()
                 elif self.parent_widget_type == "DataJoinerApp":
                     api_caller = ApiCall(self.api_cache)
                     if self.target_url_field == "api_url1_edit":
@@ -610,6 +615,7 @@ class ParameterViewer(QWidget):
 
 class MyWidget(QWidget):
     def __init__(self, api_cache):
+        import pandas as pd
         super().__init__()
         self.df_data = pd.DataFrame() # 데이터 프레임?!!?
         self.origin_data = None
@@ -626,7 +632,7 @@ class MyWidget(QWidget):
 
     def setup(self):
         self.setWindowTitle('API 다운로더')
-        self.setGeometry(600, 600, 600, 600)
+        self.setGeometry(500, 500, 500, 500)
         font = QFont()
         font.setPointSize(10)
         self.setFont(font)
@@ -640,12 +646,12 @@ class MyWidget(QWidget):
         main_layout.addLayout(self.fixed_layout)
 
         self.api_label = QLabel('API URL')
-        self.api_input = EnterLineEdit(self)
-        self.api_input.setToolTip('서비스URL을 입력하세요.')
+        self.api_input = QLineEdit(self)  # EnterLineEdit를 QLineEdit으로 변경했습니다. EnterLineEdit 정의가 필요합니다.
         self.add_param_to_layout(self.fixed_layout, self.api_label, self.api_input)
+        self.api_input.setToolTip("API의 URL을 입력하세요.")
 
         self.key_label = QLabel('serviceKey')
-        self.key_input = EnterLineEdit(self)
+        self.key_input = QLineEdit(self)  # EnterLineEdit를 QLineEdit으로 변경했습니다. EnterLineEdit 정의가 필요합니다.
         self.add_param_to_layout(self.fixed_layout, self.key_label, self.key_input)
         self.key_input.setToolTip("서비스 키를 입력하세요.")
 
@@ -671,6 +677,7 @@ class MyWidget(QWidget):
         self.call_button = QPushButton('OpenAPI 호출', self)
         self.call_button.clicked.connect(self.api_call)
         self.call_button.setToolTip("입력된 API와 요청 변수를 바탕으로 API를 호출합니다.")
+
 
         self.download_button = QPushButton('API 호출정보 저장', self)
         self.download_button.clicked.connect(self.download_data)
@@ -698,14 +705,6 @@ class MyWidget(QWidget):
 
         self.setLayout(main_layout)
 
-    def onTextChanged(self):
-        # input 텍스트가 변경되면 api_data를 None으로 설정
-        self.df_data = pd.DataFrame()
-        self.origin_data = None
-        self.preview_table.clearContents()  # 셀 내용 비우기
-        self.preview_table.setRowCount(0)  # 행 수 초기화
-        self.preview_table.setColumnCount(0)  # 열 수 초기화
-
     def add_param_to_layout(self, layout, label_widget, edit_widget, checkbox_widget=None):
         h_layout = QHBoxLayout()
         if checkbox_widget:
@@ -716,7 +715,6 @@ class MyWidget(QWidget):
         else:
             label_widget.setMinimumWidth(100)
             label_widget.setMaximumWidth(100)
-        edit_widget.textChanged.connect(self.onTextChanged)
         h_layout.addWidget(label_widget)
         h_layout.addWidget(edit_widget)
         #h_layout.setSpacing(10)
@@ -745,7 +743,6 @@ class MyWidget(QWidget):
 
             param_label = QLabel(display_name)
             param_input = EnterLineEdit(self)
-            param_input.setToolTip('요청변수를 입력하세요')
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
 
@@ -789,7 +786,6 @@ class MyWidget(QWidget):
             param_label.setMinimumWidth(130)
             param_label.setMaximumWidth(130)
             param_input = EnterLineEdit(self)
-            param_input.textChanged.connect(self.onTextChanged)
             param_input.setMaximumWidth(200)
             param_input.setMinimumWidth(200)
             param_input.setText(value)
@@ -929,7 +925,7 @@ class MyWidget(QWidget):
                 elif file_type == "Excel files (*.xlsx)":
                     downloader.save_xlsx(file_path)
         else:
-            QMessageBox.critical(None, '에러', 'API를 호출하세요')
+            QMessageBox.critical(None, '에러', 'API 데이터를 가져오지 못했습니다.')
             
 # Enter를 눌렀을 때 다음 위젯으로 넘어가는 QLineEdit 서브클래스
 class EnterLineEdit(QLineEdit):
@@ -954,39 +950,44 @@ class DataDownload:
             QMessageBox.information(None, '알림', 'XML 파일 저장 성공!')
         except Exception as e:
             QMessageBox.information(None, '알림', 'XML 파일 저장 실패!')
+            print("XML 파일 저장 실패:", e)
 
     def save_csv(self, file_path):
         try:
             # UTF-8 인코딩으로 CSV 파일 저장, 인덱스는 제외하고, 각 레코드는 '\n'으로 종료
             self.api_data.to_csv(file_path, index=False, encoding='utf-8-sig')
-            QMessageBox.information(None, '알림', 'csv 파일 저장 성공!')
+            print("csv 파일 저장 성공")
         except Exception as e:
-            QMessageBox.information(None, '알림', 'csv 파일 저장 실패!')
+            print(f"csv 파일 저장 실패: {e}")
 
     def save_json(self, file_path):
+        import json
         try:
             with open(file_path, 'w', encoding='utf-8') as file:
                 json.dump(self.api_data.to_dict(orient='records'), file, ensure_ascii=False, indent=4)
-            QMessageBox.information(None, '알림', 'JSON 파일 저장 성공!')
+            print("JSON 파일 저장 성공")
         except Exception as e:
-            QMessageBox.information(None, '알림', 'JSON 파일 저장 실패!')
+            print("JSON 파일 저장 실패:", e)
             
     def save_xlsx(self, file_path):
+        import pandas as pd
         try:
         # 엑셀 파일로 저장할 때는 ExcelWriter 객체를 생성하여 사용
             with pd.ExcelWriter(file_path, engine='xlsxwriter') as writer:
                 self.api_data.to_excel(writer, index=False)
-            QMessageBox.information(None, '알림', '엑셀 파일 저장 성공!')
+            print("엑셀 파일 저장 성공")
         except Exception as e:
-            QMessageBox.information(None, '알림', '엑셀 파일 저장 실패!')
+            print("엑셀 파일 저장 실패:", e)
                 
 def fetch_data(xml_data):
+    import pandas as pd
     data = parse_xml_to_dict(xml_data)
     df = pd.DataFrame(data)
     return df
 
 def parse_xml_to_dict(xml_data): 
     data_list = []
+    import xml.etree.ElementTree as ET
     try:
         root = ET.fromstring(xml_data)
         if root.findall('.//item'):
@@ -1010,49 +1011,56 @@ def parse_xml_to_dict(xml_data):
 class DataJoinerApp(QWidget):
     def __init__(self, api_cache):
         super().__init__()
-        self.initUI()
         self.api_cache = api_cache
         self.df1 = None
         self.df2 = None
         self.joined_data = None
+        self.initUI()
 
     def initUI(self):
-        self.setWindowTitle('API Data Joiner')
-        self.setGeometry(100, 100, 600, 400)
-        
-        layout = QVBoxLayout()
+        # Window flags are adjusted to allow for a custom title bar
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setGeometry(700, 700, 700, 700)
 
+        # Layout for the entire widget
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Custom title bar is created and added first
+        self.custom_title_bar = CustomTitleBar(self)
+        layout.addWidget(self.custom_title_bar)
+
+        # Input fields for API URLs
         self.api_url1_edit = QLineEdit(self)
         self.api_url1_edit.setReadOnly(True)
         self.select_button1 = QPushButton('URL1 선택', self)
-        # URL1 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button1.clicked.connect(lambda: self.show_parameters('api_url1_edit'))
-        self.select_button1.setToolTip("조인할 첫 번째 데이터를 선택하세요.")
-
 
         self.api_url2_edit = QLineEdit(self)
         self.api_url2_edit.setReadOnly(True)
         self.select_button2 = QPushButton('URL2 선택', self)
-        # URL2 선택 버튼에 대한 클릭 이벤트 처리
         self.select_button2.clicked.connect(lambda: self.show_parameters('api_url2_edit'))
-        self.select_button2.setToolTip("조인할 두 번째 데이터를 선택하세요.")
 
-        # UI 구성
+        # Adding the API URL fields and buttons to the layout
         layout.addWidget(QLabel('첫 번째 API 주소:'))
         layout.addWidget(self.api_url1_edit)
-        layout.addWidget(self.select_button1)  # 올바른 버튼 변수명 사용
-        
+        layout.addWidget(self.select_button1)
+
         layout.addWidget(QLabel('두 번째 API 주소:'))
         layout.addWidget(self.api_url2_edit)
-        layout.addWidget(self.select_button2)  # 올바른 버튼 변수명 사용
+        layout.addWidget(self.select_button2)
 
+        # Comboboxes for selecting the columns to join on
         self.join_column1_combobox = QComboBox(self)
+        self.join_column2_combobox = QComboBox(self)
+
         layout.addWidget(QLabel('조인할 컬럼1 이름:'))
         layout.addWidget(self.join_column1_combobox)
 
-        self.join_column2_combobox = QComboBox(self)
         layout.addWidget(QLabel('조인할 컬럼2 이름:'))
         layout.addWidget(self.join_column2_combobox)
+
 
         self.join_button = QPushButton('데이터 조인', self)
         self.join_button.clicked.connect(self.join_data)
@@ -1065,13 +1073,16 @@ class DataJoinerApp(QWidget):
         self.save_btn.clicked.connect(self.download)
         layout.addWidget(self.save_btn)
         
+        
         self.setLayout(layout)
 
     def show_parameters(self, target_field):
         self.parameter_viewer = ParameterViewer(self, self.api_cache, "DataJoinerApp", target_url_field=target_field)
         self.parameter_viewer.show()
 
+
     def join_data(self):
+        import pandas as pd
         join_column1 = self.join_column1_combobox.currentText()
         join_column2 = self.join_column2_combobox.currentText()
 
@@ -1087,6 +1098,9 @@ class DataJoinerApp(QWidget):
         elif not self.join_column1_combobox.currentText():
             QMessageBox.warning(self, '경고', '첫 번째 API URL을(를) 선택해야 합니다!')
             return
+        
+        # self.df1 = fetch_data(api_url_1)
+        # self.df2 = fetch_data(api_url_2)
 
         if self.df1 is None or self.df2 is None:
             QMessageBox.critical(self, '오류', '데이터를 가져오는 데 실패했습니다. API URL을 확인해주세요.')
@@ -1138,14 +1152,17 @@ class MainApp(QMainWindow):
 
         self.registry_manager = RegistryManager()
         self.settings = self.registry_manager.load_settings()
+
+        # Initially set these to None to indicate they're not loaded yet
         self.myWidgetApp = None
         self.dataJoiner = None
+
         self.initUI()
-        self.setStyleSheet("QMainWindow {background: 'white';}")
+        # self.setStyleSheet("QMainWindow {background: 'white';}")
     
     def initUI(self):
         self.setWindowTitle('API')
-        self.setGeometry(500, 500, 500, 500)
+        self.setGeometry(600, 600, 600, 600)
         
         centralWidget = QWidget()
         self.setCentralWidget(centralWidget)
@@ -1162,9 +1179,10 @@ class MainApp(QMainWindow):
         
         centralWidget.setLayout(hbox)
         
-        # 커스텀 타이틀 바 설정
+        # Custom title bar setup
         self.custom_title_bar = CustomTitleBar(self)
         self.setMenuWidget(self.custom_title_bar)
+
 
     def showMyWidgetApp(self):
         if self.myWidgetApp is None:  # MyWidget 인스턴스가 없으면 생성
@@ -1177,6 +1195,7 @@ class MainApp(QMainWindow):
         self.dataJoiner.show()  # DataJoinerApp 표시
 
 if __name__ == '__main__':
+    import sys
     app = QApplication.instance()  # 기존 인스턴스 확인
     if not app:  # 인스턴스가 없을 경우 새로 생성
         app = QApplication(sys.argv)
