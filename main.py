@@ -1186,7 +1186,7 @@ class MainApp(QMainWindow):
 
     def showMyWidgetApp(self):
         if self.myWidgetApp is None:  # MyWidget 인스턴스가 없으면 생성
-            self.myWidgetApp = MyWidget(self.api_cache)  # 이 부분을 MyWidget()으로 수정 
+            self.myWidgetApp = MyWidget(self.api_cache)  # 이 부분을 MyWidget()으로 수정
         self.myWidgetApp.show()  # MyWidget 표시
 
     def showDataJoinerApp(self):
